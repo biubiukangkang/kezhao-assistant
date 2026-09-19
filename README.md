@@ -1,25 +1,36 @@
-# QMuse local project
+# 课照助手
 
-Install and verify the project:
+大学生拍完板书/PPT，照片按课表时间自动归档到对应课程相册——拍完什么都不用管，复习时一搜一个准。
+
+支付宝「智能体涌现大赛」参赛作品，基于 QMuse 平台构建。
+
+**线上地址**：https://qmuse.cn/app/2147940046996490
+
+## 功能一览
+
+- 拍照即归档：全屏相机（前后摄翻转、连拍同批），按拍摄时间自动匹配课表归入课程
+- 课表：超级课程表式周视图；周次任意勾选组合；支持教务系统导出的 .xls/.xlsx 文件与文本粘贴导入
+- 课程库：搜索、缩略图预览、长按课程卡管理（编辑/删除）、待分类显式入口与多选批量移动
+- 相册：QQ 空间式动态流（备注醒目在上、图在下）、沉浸查看器（星标/移动/改时间/删除）
+- 数据：照片压缩入库、文件夹镜像（Chromium）、JSON 整包备份/恢复、一键演示数据
+
+## 本地开发
 
 ```bash
-cnpm install
-npm run check
-npm run build
+npm install        # 推荐 cnpm install
+npm run check      # tsr generate + oxlint + tsc
+npm run dev        # http://localhost:5173
+npm run build      # 生产构建
 ```
 
-`cnpm install` is recommended. Use `npm install` when cnpm is unavailable.
+部署到 QMuse：`npm run build` 后执行 `qmuse import .`；平台上的"发布"动作在 QMuse 网页端完成。
 
-Develop with Codex or another coding agent. Read `AGENTS.md` before changing the project. Tools that do not discover repository skills automatically should also read `.agents/skills/qmuse-cloud/SKILL.md` when cloud capabilities are involved.
+## 文档
 
-Import the project with:
+- [docs/PRD.md](docs/PRD.md) — 产品需求与设计规范（含「不反人性」负面清单）
+- [docs/技术方案.md](docs/技术方案.md) — 架构、数据模型、匹配算法、平台约束（**改代码前先读**）
+- [docs/踩坑日志.md](docs/踩坑日志.md) — QMuse 校验拦截、Windows/Vite、浏览器自动化踩坑
 
-```bash
-qmuse login
-qmuse space list
-qmuse space use <spaceId>
-qmuse import .
-```
+## 约定
 
-The same `qmuse import .` command creates an app on first use and adds a version to the bound app on later uses.
-When an import fails, let the coding agent read `.qmuse/last-import-error.json`, fix source issues, and run the same import command again.
+改代码前读 `AGENTS.md`（项目约定）与 `docs/技术方案.md`。路由保持平铺、根布局不挂全局组件、照片一律经 `lib/archive.ts` 入库。

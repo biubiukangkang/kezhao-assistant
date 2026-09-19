@@ -25,3 +25,12 @@ Keep local images in `src/assets` or `public/assets`. Use static Vite imports, l
 When the project is ready, run `qmuse import .`. Use `qmuse import configure` if the task requests public configuration or cloud confirmation. There is no `qmuse push` command.
 
 If import fails and `.qmuse/last-import-error.json` exists, read its structured diagnostics, fix the reported source or dependency issue, rerun `npm run check` and `npm run build`, then retry `qmuse import .`. Do not edit the diagnostic file or platform bindings to bypass validation. For platform, infrastructure, or policy failures, report the category to the user instead of changing application code blindly.
+
+# 项目约定（课照助手）
+
+- routes 目录保持平铺，不要引入 `_app.tsx` + `_app/` pathless layout；`__root.tsx` 不挂任何全局 provider / Toaster——QMuse 迁移校验会拦截（详见 docs/踩坑日志.md）。
+- Tab 页外壳用 `components/page-shell.tsx`（容器 + BottomNav + Toaster）；全屏页（camera、course-album）不用壳。
+- 照片一律经 `lib/archive.ts` 入库（压缩到长边 2048 + 去重 + 课表匹配 + 文件夹镜像），不要绕过直接写 db。
+- 读周次用 `match.ts` 的 `weeksOf` / `slotWeekLabel`（兼容旧 weekStart/End+单双周 数据），不要直接读 slot.weekStart。
+- 部署：`npm run build` → `qmuse import .`；平台"发布"动作在 QMuse 网页端。
+- 主文档：docs/技术方案.md（架构与现状）、docs/PRD.md（需求与进度）、docs/踩坑日志.md。
