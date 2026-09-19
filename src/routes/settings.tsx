@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageShell } from "@/components/page-shell";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
@@ -121,6 +121,22 @@ function SettingsPage() {
     });
     if (periods[i].startMin >= periods[i].endMin) return; // 开始必须早于结束
     persist({ ...settings!, periods });
+  }
+
+  function addPeriod() {
+    const last = settings!.periods[settings!.periods.length - 1];
+    const startMin = Math.min(last.endMin + 15, 23 * 60);
+    const endMin = Math.min(startMin + 95, 23 * 60 + 59);
+    if (startMin >= endMin) {
+      toast.error("已经到深夜了，加不下新的一节");
+      return;
+    }
+    persist({ ...settings!, periods: [...settings!.periods, { startMin, endMin }] });
+  }
+
+  function removePeriod(i: number) {
+    if (settings!.periods.length <= 1) return;
+    persist({ ...settings!, periods: settings!.periods.filter((_, idx) => idx !== i) });
   }
 
   async function handleSeed() {
@@ -264,8 +280,25 @@ function SettingsPage() {
                   className="min-h-10"
                   aria-label={`第 ${periodLabel(i)} 节结束时间`}
                 />
+                {settings.periods.length > 1 && (
+                  <button
+                    type="button"
+                    aria-label={`删除第 ${periodLabel(i)} 节`}
+                    onClick={() => removePeriod(i)}
+                    className="rounded-md p-1.5 text-muted-foreground transition-colors active:bg-muted hover:text-destructive"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                )}
               </div>
             ))}
+            <button
+              type="button"
+              onClick={addPeriod}
+              className="min-h-9 w-full rounded-lg border border-dashed text-xs text-muted-foreground transition-colors active:bg-muted"
+            >
+              ＋ 添加一节
+            </button>
           </div>
         </div>
       </FoldCard>

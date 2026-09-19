@@ -21,24 +21,26 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ColorSwatches } from "@/components/color-swatches";
-import { deleteCourse, saveCourse } from "@/lib/db";
-import type { Course } from "@/lib/types";
+import { deleteCourse, saveCourse, uid } from "@/lib/db";
+import { COURSE_COLORS, type Course } from "@/lib/types";
 
-/** 编辑课程：改名/教师/颜色，或删除（照片回待分类，不丢失） */
+/** 编辑/新建课程：course=null 为新建；删除时照片回待分类，不丢失 */
 export function CourseEditorDialog({
   course,
-  photoCount,
+  defaultColor,
+  photoCount = 0,
   onSaved,
   onClose,
 }: {
-  course: Course;
-  photoCount: number;
+  course: Course | null;
+  defaultColor?: string;
+  photoCount?: number;
   onSaved: () => void;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(course.name);
-  const [teacher, setTeacher] = useState(course.teacher ?? "");
-  const [color, setColor] = useState(course.color);
+  const [name, setName] = useState(course?.name ?? "");
+  const [teacher, setTeacher] = useState(course?.teacher ?? "");
+  const [color, setColor] = useState(course?.color ?? defaultColor ?? COURSE_COLORS[0]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -50,12 +52,22 @@ export function CourseEditorDialog({
     setSaving(true);
     setError("");
     try {
-      await saveCourse({
-        ...course,
-        name: name.trim(),
-        teacher: teacher.trim() || undefined,
-        color,
-      });
+      if (course) {
+        await saveCourse({
+          ...course,
+          name: name.trim(),
+          teacher: teacher.trim() || undefined,
+          color,
+        });
+      } else {
+        await saveCourse({
+          id: uid(),
+          name: name.trim(),
+          teacher: teacher.trim() || undefined,
+          color,
+          createdAt: Date.now(),
+        });
+      }
       onSaved();
       onClose();
     } finally {
@@ -64,6 +76,7 @@ export function CourseEditorDialog({
   }
 
   async function handleDelete() {
+    if (!course) return;
     await deleteCourse(course.id);
     onSaved();
     onClose();
@@ -73,7 +86,7 @@ export function CourseEditorDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>编辑课程</DialogTitle>
+          <DialogTitle>{course ? "编辑课程" : "添加课程"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -98,27 +111,29 @@ export function CourseEditorDialog({
         </div>
 
         <DialogFooter className="mt-2 gap-2 sm:gap-0">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" className="mr-auto text-destructive hover:text-destructive">
-                删除课程
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>删除课程「{course.name}」？</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {photoCount > 0
-                    ? `它和对应的上课时段会被删除；已归档的 ${photoCount} 张照片会回到「待分类」，不会丢失。`
-                    : "它和对应的上课时段会被删除，此操作无法撤销。"}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>先不删</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete}>删除</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {course && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" className="mr-auto text-destructive hover:text-destructive">
+                  删除课程
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>删除课程「{course.name}」？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {photoCount > 0
+                      ? `它和对应的上课时段会被删除；已归档的 ${photoCount} 张照片会回到「待分类」，不会丢失。`
+                      : "它和对应的上课时段会被删除，此操作无法撤销。"}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>先不删</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete}>删除</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <Button variant="outline" onClick={onClose}>
             取消
           </Button>

@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, SwitchCamera, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
@@ -35,6 +35,7 @@ function CameraPage() {
   const [shotCount, setShotCount] = useState(0);
   const [shotNote, setShotNote] = useState("");
   const noteTimer = useRef<number | undefined>(undefined);
+  const [facing, setFacing] = useState<"environment" | "user">("environment");
   const router = useRouter();
   // 一次打开相机 = 一批，首页「本次导入」按批整组展示
   const [sessionBatchId] = useState(() => uid());
@@ -50,7 +51,7 @@ function CameraPage() {
     const timer = window.setTimeout(() => {
       if (!cancelled && !stream) setError("相机暂时打不开（可能没授权）。可以先从相册选照片。");
     }, 8000);
-    md.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+    md.getUserMedia({ video: { facingMode: facing }, audio: false })
       .then((s) => {
         if (cancelled) {
           s.getTracks().forEach((t) => t.stop());
@@ -77,7 +78,11 @@ function CameraPage() {
         return prev;
       });
     };
-  }, []);
+  }, [facing]);
+
+  function flipCamera() {
+    setFacing((f) => (f === "environment" ? "user" : "environment"));
+  }
 
   async function shoot() {
     const video = videoRef.current;
@@ -168,7 +173,14 @@ function CameraPage() {
                 onClick={() => void shoot()}
                 className="size-20 rounded-full border-4 border-white bg-white/25 transition-transform active:scale-95"
               />
-              <div className="size-12" />
+              <button
+                type="button"
+                aria-label="翻转摄像头"
+                onClick={flipCamera}
+                className="flex size-12 items-center justify-center rounded-full bg-white/15 transition-transform active:scale-90"
+              >
+                <SwitchCamera className="size-5" />
+              </button>
             </div>
           </div>
         </>

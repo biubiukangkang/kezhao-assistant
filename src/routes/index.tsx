@@ -35,7 +35,7 @@ function toastBatch(r: BatchResult) {
   else toast("导入完成", { description: text });
 }
 
-/** 首页：拍板书 C 位 + 今天 + 最近归档 + 成就。配置收进设置，广告词只出现在空状态 */
+/** 首页：拍照 C 位 + 今天 + 最近归档 + 成就。配置收进设置，广告词只出现在空状态 */
 function HomePage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
@@ -230,7 +230,7 @@ function HomePage() {
           className="flex min-h-20 w-full items-center justify-center gap-3 rounded-3xl bg-primary text-lg font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 active:scale-[0.98] active:bg-primary/80"
         >
           <Camera className="size-7" />
-          拍板书
+          拍照
         </Link>
         <button
           type="button"

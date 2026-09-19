@@ -1,10 +1,23 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { PageShell } from "@/components/page-shell";
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronRight, Plus, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { EmptySketch } from "@/components/empty-sketch";
 import { Input } from "@/components/ui/input";
-import { listCourses, listPhotos } from "@/lib/db";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { CourseEditorDialog } from "@/components/course-editor-dialog";
+import { COURSE_COLORS } from "@/lib/types";
+import { deleteCourse, listCourses, listPhotos } from "@/lib/db";
 import type { Course, Photo } from "@/lib/types";
 
 export const Route = createFileRoute("/courses")({
@@ -16,13 +29,24 @@ function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [query, setQuery] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<Course | null>(null);
 
-  useEffect(() => {
+  const load = () => {
     void Promise.all([listCourses(), listPhotos()]).then(([c, p]) => {
       setCourses(c);
       setPhotos(p);
     });
-  }, []);
+  };
+  useEffect(load, []);
+
+  async function handleDelete() {
+    if (!deleting) return;
+    await deleteCourse(deleting.id);
+    toast.success(`已删除「${deleting.name}」`);
+    setDeleting(null);
+    load();
+  }
 
   const countByCourse = new Map<string, number>();
   let pendingCount = 0;
@@ -68,8 +92,16 @@ function CoursesPage() {
   return (
     <PageShell>
     <div className="px-4 pt-6">
-      <header className="mb-3">
+      <header className="mb-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold tracking-tight">课程库</h1>
+        <button
+          type="button"
+          aria-label="添加课程"
+          onClick={() => setAdding(true)}
+          className="flex size-9 items-center justify-center rounded-full border bg-card text-foreground shadow-sm active:bg-muted"
+        >
+          <Plus className="size-5" />
+        </button>
       </header>
 
       {empty ? (
@@ -124,11 +156,11 @@ function CoursesPage() {
             {filtered.map((c) => {
               const previews = previewByCourse.get(c.id) ?? [];
               return (
-                <li key={c.id}>
+                <li key={c.id} className="flex items-stretch gap-2">
                   <Link
                     to="/course-album/$courseId"
                     params={{ courseId: c.id }}
-                    className="flex min-h-16 w-full items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-colors hover:bg-accent/50 active:bg-accent"
+                    className="flex min-h-16 flex-1 items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-colors hover:bg-accent/50 active:bg-accent"
                   >
                     <span
                       className="size-3 shrink-0 rounded-full"
@@ -155,6 +187,14 @@ function CoursesPage() {
                     </div>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                   </Link>
+                  <button
+                    type="button"
+                    aria-label={`删除 ${c.name}`}
+                    onClick={() => setDeleting(c)}
+                    className="flex w-10 shrink-0 items-center justify-center rounded-2xl border bg-card text-muted-foreground shadow-sm transition-colors active:bg-muted hover:text-destructive"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
                 </li>
               );
             })}
@@ -167,6 +207,36 @@ function CoursesPage() {
         </>
       )}
       </div>
+
+      {adding && (
+        <CourseEditorDialog
+          course={null}
+          defaultColor={COURSE_COLORS[courses.length % COURSE_COLORS.length]}
+          onSaved={() => {
+            setAdding(false);
+            load();
+          }}
+          onClose={() => setAdding(false)}
+        />
+      )}
+      {deleting && (
+        <AlertDialog open onOpenChange={(o) => !o && setDeleting(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>删除课程「{deleting.name}」？</AlertDialogTitle>
+              <AlertDialogDescription>
+                {(countByCourse.get(deleting.id) ?? 0) > 0
+                  ? `它和对应的上课时段会被删除；已归档的 ${countByCourse.get(deleting.id)} 张照片会回到「待分类」，不会丢失。`
+                  : "它和对应的上课时段会被删除，此操作无法撤销。"}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>先不删</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete}>删除</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </PageShell>
   );
 }

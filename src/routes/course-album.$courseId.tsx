@@ -296,7 +296,7 @@ function AlbumPage() {
                 className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground active:scale-[0.98]"
               >
                 <Camera className="size-4" />
-                去拍板书
+                去拍照
               </Link>
             </>
           )}
