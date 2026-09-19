@@ -217,7 +217,22 @@ function SettingsPage() {
   async function handlePickFolder() {
     try {
       const name = await pickFolder();
-      if (name) toast.success(`已开启同步：${name}`, { description: "以后拍的照片会自动存一份进去" });
+      if (!name) {
+        await refreshFolder();
+        return;
+      }
+      toast.success(`照片将存到「${name}」`, { description: "已有照片也正在放进去…" });
+      setSyncing(true);
+      try {
+        const { ok, fail } = await syncAllPhotos();
+        if (ok + fail > 0) {
+          toast.success(`已放入 ${ok} 张已有照片${fail > 0 ? `，失败 ${fail} 张` : ""}`);
+        }
+      } catch {
+        // 全量同步失败不阻断，可手动再点「把已有照片放进去」
+      } finally {
+        setSyncing(false);
+      }
       await refreshFolder();
     } catch {
       // 用户取消选择
@@ -402,27 +417,26 @@ function SettingsPage() {
       <FoldCard title="数据" summary="文件夹同步 / 备份 / 演示数据 / 清空">
         {folderOk ? (
           <div className="space-y-2">
-            <h3 className="text-xs font-medium text-muted-foreground">照片同步文件夹</h3>
+            <h3 className="text-xs font-medium text-muted-foreground">照片存到哪里</h3>
             {!folder || folder.name === null ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  选一个电脑上的文件夹，以后拍的照片会自动存一份进去（相当于随时可看的备份）。
+                  照片目前存在本应用内。想让照片以文件形式放进你选的文件夹？选一次文件夹，
+                  之后每张照片都会自动放进去。
                 </p>
                 <Button
                   variant="outline"
                   className="min-h-11 w-full"
                   onClick={handlePickFolder}
                 >
-                  选择文件夹并开启
+                  选择照片文件夹
                 </Button>
               </>
             ) : folder.permission === "granted" ? (
               <>
                 <p className="text-xs">
-                  <span className="font-medium text-green-600">已开启</span>{" "}
-                  <span className="text-muted-foreground">
-                    同步到「{folder.name}」，新照片自动写入
-                  </span>
+                  <span className="font-medium text-green-600">照片存到「{folder.name}」</span>
+                  <span className="text-muted-foreground">，新照片自动放进去</span>
                 </p>
                 <div className="flex gap-2">
                   <Button
@@ -431,14 +445,14 @@ function SettingsPage() {
                     disabled={syncing}
                     onClick={handleSyncAll}
                   >
-                    {syncing ? "同步中…" : "立即同步全部"}
+                    {syncing ? "放入中…" : "把已有照片放进去"}
                   </Button>
                   <Button
                     variant="outline"
                     className="min-h-11 flex-1 text-destructive hover:text-destructive"
                     onClick={handleStopSync}
                   >
-                    停止同步
+                    停止
                   </Button>
                 </div>
               </>
@@ -447,7 +461,7 @@ function SettingsPage() {
                 <p className="text-xs">
                   <span className="font-medium text-amber-600">需要重新授权</span>{" "}
                   <span className="text-muted-foreground">
-                    文件夹「{folder.name}」的权限已过期
+                    文件夹「{folder.name}」的权限已过期，点一下就能恢复
                   </span>
                 </p>
                 <Button
@@ -462,7 +476,8 @@ function SettingsPage() {
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            当前浏览器不支持文件夹同步（用电脑版 Chrome / Edge 打开可开启）。
+            这个浏览器不支持选择照片文件夹（安卓 Chrome 或电脑版 Chrome / Edge 可以），
+            照片会先存在本应用内，不影响使用。
           </p>
         )}
 
