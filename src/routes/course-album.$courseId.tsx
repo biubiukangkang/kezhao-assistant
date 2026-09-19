@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, Camera, ImagePlus, Pencil } from "lucide-react";
+import { ArrowLeft, Camera, ImagePlus, Pencil, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { EmptySketch } from "@/components/empty-sketch";
@@ -32,7 +32,46 @@ function toastBatch(r: BatchResult) {
   else toast("添加完成", { description: text });
 }
 
-/** 课程相册：日期分组网格；courseId="pending" 为待分类；点图进沉浸查看器（可改派/备注/删除） */
+/** 备注块（QQ 空间式）：文字醒目常显，点击原地编辑，失焦自动保存，删光即清除 */
+function NoteBlock({
+  photo,
+  onSave,
+}: {
+  photo: Photo;
+  onSave: (p: Photo, note: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  if (editing || photo.note) {
+    return (
+      <textarea
+        key={photo.id}
+        defaultValue={photo.note ?? ""}
+        autoFocus={editing}
+        rows={2}
+        maxLength={200}
+        placeholder="写点提醒，比如：这份作业周五交…"
+        aria-label="备注内容"
+        onBlur={(e) => {
+          const v = e.target.value.trim();
+          if (v !== (photo.note ?? "")) onSave(photo, v);
+          setEditing(false);
+        }}
+        className="w-full resize-none rounded-lg bg-muted/40 px-2.5 py-1.5 text-[15px] leading-5 text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="text-xs text-muted-foreground transition-colors active:text-foreground"
+    >
+      ＋ 写提醒…
+    </button>
+  );
+}
+
+/** 课程相册：QQ 空间式动态流——上面文字（时间+备注）下面图片；courseId="pending" 为待分类 */
 function AlbumPage() {
   const { courseId } = Route.useParams();
   const router = useRouter();
@@ -93,15 +132,19 @@ function AlbumPage() {
   const total = flatPhotos.length;
   const movableCourses = allCourses.filter((c) => c.id !== courseId);
 
+  function patchLocal(p: Photo) {
+    setGroups((gs) =>
+      gs.map((g) => ({
+        ...g,
+        photos: g.photos.map((x) => (x.id === p.id ? p : x)),
+      })),
+    );
+  }
+
   function handleToggleStar(p: Photo) {
     const next = { ...p, starred: !p.starred };
     void savePhoto(next).then(() => {
-      setGroups((gs) =>
-        gs.map((g) => ({
-          ...g,
-          photos: g.photos.map((x) => (x.id === p.id ? next : x)),
-        })),
-      );
+      patchLocal(next);
       if (next.starred) toast.success("已标为重点板书");
     });
   }
@@ -109,13 +152,8 @@ function AlbumPage() {
   function handleUpdateNote(p: Photo, note: string) {
     const next = { ...p, note: note || undefined };
     void savePhoto(next).then(() => {
-      setGroups((gs) =>
-        gs.map((g) => ({
-          ...g,
-          photos: g.photos.map((x) => (x.id === p.id ? next : x)),
-        })),
-      );
-      if (note) toast.success("备注已保存");
+      patchLocal(next);
+      if (note) toast.success("提醒已保存");
     });
   }
 
@@ -217,37 +255,40 @@ function AlbumPage() {
           {groups.map((g) => (
             <section key={g.key}>
               <h2 className="mb-2 text-xs font-medium text-muted-foreground">{g.label}</h2>
-              <div className="grid grid-cols-3 gap-1">
+              <div className="space-y-3">
                 {g.photos.map((p) => {
                   const pd = new Date(p.capturedAt);
                   return (
-                    <button
+                    <div
                       key={p.id}
-                      type="button"
-                      onClick={() => setViewIdx(flatPhotos.findIndex((x) => x.id === p.id))}
-                      aria-label={`查看${g.label} ${minToHHmm(pd.getHours() * 60 + pd.getMinutes())} 的照片`}
-                      className="relative aspect-square overflow-hidden rounded-md bg-muted active:opacity-75"
+                      className="rounded-2xl border bg-card p-3 shadow-sm"
                     >
-                      {urls.get(p.id) && (
-                        <img
-                          src={urls.get(p.id)!}
-                          alt=""
-                          loading="lazy"
-                          className="size-full object-cover"
-                        />
-                      )}
-                      <span className="absolute bottom-1 right-1 rounded bg-black/55 px-1 text-[10px] leading-4 text-white">
-                        {minToHHmm(pd.getHours() * 60 + pd.getMinutes())}
-                      </span>
-                      {p.note && (
-                        <span className="absolute left-1 top-1 rounded-full bg-white/90 p-0.5 text-black">
-                          <StickyNoteIcon />
-                        </span>
-                      )}
-                      {p.starred && (
-                        <span className="absolute bottom-1 left-1 size-2 rounded-full bg-yellow-300 ring-1 ring-black/20" />
-                      )}
-                    </button>
+                      <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{minToHHmm(pd.getHours() * 60 + pd.getMinutes())}</span>
+                        {p.starred && (
+                          <span className="flex items-center gap-0.5 font-medium text-yellow-600">
+                            <Star className="size-3 fill-current" aria-hidden />
+                            重点
+                          </span>
+                        )}
+                      </div>
+                      <NoteBlock photo={p} onSave={handleUpdateNote} />
+                      <button
+                        type="button"
+                        onClick={() => setViewIdx(flatPhotos.findIndex((x) => x.id === p.id))}
+                        aria-label={`放大查看 ${minToHHmm(pd.getHours() * 60 + pd.getMinutes())} 的板书`}
+                        className="mt-2 block w-full overflow-hidden rounded-xl bg-muted active:opacity-90"
+                      >
+                        {urls.get(p.id) && (
+                          <img
+                            src={urls.get(p.id)!}
+                            alt=""
+                            loading="lazy"
+                            className="w-full object-cover"
+                          />
+                        )}
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -285,14 +326,5 @@ function AlbumPage() {
 
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
     </div>
-  );
-}
-
-function StickyNoteIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-2.5" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
-      <path d="M4 4h16v12l-4 4H4z" strokeLinejoin="round" />
-      <path d="M16 20v-4h4" strokeLinejoin="round" />
-    </svg>
   );
 }
