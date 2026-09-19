@@ -1,7 +1,7 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PageShell } from "@/components/page-shell";
-import { ChevronRight, Plus, Search, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ChevronRight, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmptySketch } from "@/components/empty-sketch";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { CourseEditorDialog } from "@/components/course-editor-dialog";
 import { COURSE_COLORS } from "@/lib/types";
 import { deleteCourse, listCourses, listPhotos } from "@/lib/db";
@@ -24,13 +30,18 @@ export const Route = createFileRoute("/courses")({
   component: CoursesPage,
 });
 
-/** 课程库：一摞讲义。右侧露最近 3 张缩略图当内容预览，顶部搜索（W3 接 OCR 全文检索） */
+/** 课程库：一摞讲义。长按课程卡（桌面右键）弹出编辑/删除；顶部搜索（W3 接 OCR 全文检索） */
 function CoursesPage() {
+  const navigate = useNavigate();
   const [courses, setCourses] = useState<Course[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Course | null>(null);
   const [deleting, setDeleting] = useState<Course | null>(null);
+  const [actionTarget, setActionTarget] = useState<Course | null>(null);
+  const pressTimer = useRef<number | undefined>(undefined);
+  const longPressed = useRef(false);
 
   const load = () => {
     void Promise.all([listCourses(), listPhotos()]).then(([c, p]) => {
@@ -39,14 +50,6 @@ function CoursesPage() {
     });
   };
   useEffect(load, []);
-
-  async function handleDelete() {
-    if (!deleting) return;
-    await deleteCourse(deleting.id);
-    toast.success(`已删除「${deleting.name}」`);
-    setDeleting(null);
-    load();
-  }
 
   const countByCourse = new Map<string, number>();
   let pendingCount = 0;
@@ -85,140 +88,212 @@ function CoursesPage() {
     [urls],
   );
 
+  function openActions(c: Course) {
+    if ("vibrate" in navigator) navigator.vibrate(10);
+    longPressed.current = true;
+    setActionTarget(c);
+  }
+  function startPress(c: Course) {
+    window.clearTimeout(pressTimer.current);
+    pressTimer.current = window.setTimeout(() => openActions(c), 500);
+  }
+  function clearPress() {
+    window.clearTimeout(pressTimer.current);
+  }
+  function openAlbum(c: Course) {
+    if (longPressed.current) {
+      longPressed.current = false;
+      return;
+    }
+    void navigate({ to: "/course-album/$courseId", params: { courseId: c.id } });
+  }
+
+  async function handleDelete() {
+    if (!deleting) return;
+    await deleteCourse(deleting.id);
+    toast.success(`已删除「${deleting.name}」`);
+    setDeleting(null);
+    load();
+  }
+
   const q = query.trim().toLowerCase();
   const filtered = q ? courses.filter((c) => c.name.toLowerCase().includes(q)) : courses;
   const empty = courses.length === 0 && pendingCount === 0;
 
   return (
     <PageShell>
-    <div className="px-4 pt-6">
-      <header className="mb-3 flex items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">课程库</h1>
-        <button
-          type="button"
-          aria-label="添加课程"
-          onClick={() => setAdding(true)}
-          className="flex size-9 items-center justify-center rounded-full border bg-card text-foreground shadow-sm active:bg-muted"
-        >
-          <Plus className="size-5" />
-        </button>
-      </header>
-
-      {empty ? (
-        <div className="flex flex-col items-center gap-2 pt-14 text-center">
-          <EmptySketch className="w-40" />
-          <p className="text-sm text-muted-foreground">还没有课程</p>
-          <p className="text-xs text-muted-foreground">
-            录上课表，拍的照片就会自动各回各家
-          </p>
-          <Link
-            to="/schedule"
-            className="mt-2 inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground active:scale-[0.98]"
+      <div className="px-4 pt-6">
+        <header className="mb-3 flex items-center justify-between">
+          <h1 className="text-xl font-semibold tracking-tight">课程库</h1>
+          <button
+            type="button"
+            aria-label="添加课程"
+            onClick={() => setAdding(true)}
+            className="flex size-9 items-center justify-center rounded-full border bg-card text-foreground shadow-sm active:bg-muted"
           >
-            去录入课表
-          </Link>
-        </div>
-      ) : (
-        <>
-          <div className="relative mb-3">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索课程"
-              className="min-h-11 rounded-xl pl-9"
-              aria-label="搜索课程"
-            />
-          </div>
+            <Plus className="size-5" />
+          </button>
+        </header>
 
-          <ul className="space-y-2 pb-4">
-            {pendingCount > 0 && (
-              <li>
-                <Link
-                  to="/course-album/$courseId"
-                  params={{ courseId: "pending" }}
-                  className="flex min-h-16 w-full items-center gap-3 rounded-2xl border border-dashed bg-card p-4 shadow-sm transition-colors hover:bg-accent/50 active:bg-accent"
-                >
-                  <span className="size-3 shrink-0 rounded-full bg-amber-400" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">待分类</div>
-                    <div className="text-xs text-muted-foreground">
-                      {pendingCount} 张 · 还没认出是哪节课的
-                    </div>
-                  </div>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                </Link>
-              </li>
-            )}
-            {filtered.map((c) => {
-              const previews = previewByCourse.get(c.id) ?? [];
-              return (
-                <li key={c.id} className="flex items-stretch gap-2">
+        {empty ? (
+          <div className="flex flex-col items-center gap-2 pt-14 text-center">
+            <EmptySketch className="w-40" />
+            <p className="text-sm text-muted-foreground">还没有课程</p>
+            <p className="text-xs text-muted-foreground">
+              录上课表或点右上角加号，拍的照片就会自动各回各家
+            </p>
+            <Link
+              to="/schedule"
+              className="mt-2 inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground active:scale-[0.98]"
+            >
+              去录入课表
+            </Link>
+          </div>
+        ) : (
+          <>
+            <div className="relative mb-3">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden
+              />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索课程"
+                className="min-h-11 rounded-xl pl-9"
+                aria-label="搜索课程"
+              />
+            </div>
+
+            <ul className="space-y-2 pb-4">
+              {pendingCount > 0 && (
+                <li>
                   <Link
                     to="/course-album/$courseId"
-                    params={{ courseId: c.id }}
-                    className="flex min-h-16 flex-1 items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-colors hover:bg-accent/50 active:bg-accent"
+                    params={{ courseId: "pending" }}
+                    className="flex min-h-16 w-full items-center gap-3 rounded-2xl border border-dashed bg-card p-4 shadow-sm transition-colors hover:bg-accent/50 active:bg-accent"
                   >
-                    <span
-                      className="size-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: c.color }}
-                    />
+                    <span className="size-3 shrink-0 rounded-full bg-amber-400" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{c.name}</div>
+                      <div className="truncate text-sm font-medium">待分类</div>
                       <div className="text-xs text-muted-foreground">
-                        {(countByCourse.get(c.id) ?? 0) > 0
-                          ? `${countByCourse.get(c.id)} 张`
-                          : "还没有照片"}
+                        {pendingCount} 张 · 还没认出是哪节课的
                       </div>
-                    </div>
-                    <div className="flex -space-x-2.5">
-                      {previews.map((p) => (
-                        <img
-                          key={p.id}
-                          src={urls.get(p.id)}
-                          alt=""
-                          loading="lazy"
-                          className="size-9 rounded-md border-2 border-card bg-muted object-cover"
-                        />
-                      ))}
                     </div>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                   </Link>
-                  <button
-                    type="button"
-                    aria-label={`删除 ${c.name}`}
-                    onClick={() => setDeleting(c)}
-                    className="flex w-10 shrink-0 items-center justify-center rounded-2xl border bg-card text-muted-foreground shadow-sm transition-colors active:bg-muted hover:text-destructive"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
                 </li>
-              );
-            })}
-            {filtered.length === 0 && (
-              <li className="py-8 text-center text-sm text-muted-foreground">
-                没有叫「{query.trim()}」的课程
-              </li>
-            )}
-          </ul>
-        </>
-      )}
+              )}
+              {filtered.map((c) => {
+                const previews = previewByCourse.get(c.id) ?? [];
+                return (
+                  <li key={c.id}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`课程 ${c.name}，长按管理`}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        openActions(c);
+                      }}
+                      onTouchStart={() => startPress(c)}
+                      onTouchEnd={clearPress}
+                      onTouchMove={clearPress}
+                      onMouseDown={() => startPress(c)}
+                      onMouseUp={clearPress}
+                      onMouseLeave={clearPress}
+                      onClick={() => openAlbum(c)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") openAlbum(c);
+                      }}
+                      className="flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-colors select-none hover:bg-accent/50 active:bg-accent"
+                    >
+                      <span
+                        className="size-3 shrink-0 rounded-full"
+                        style={{ backgroundColor: c.color }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {(countByCourse.get(c.id) ?? 0) > 0
+                            ? `${countByCourse.get(c.id)} 张`
+                            : "还没有照片"}
+                        </div>
+                      </div>
+                      <div className="flex -space-x-2.5">
+                        {previews.map((p) => (
+                          <img
+                            key={p.id}
+                            src={urls.get(p.id)}
+                            alt=""
+                            loading="lazy"
+                            draggable={false}
+                            className="size-9 rounded-md border-2 border-card bg-muted object-cover pointer-events-none"
+                          />
+                        ))}
+                      </div>
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                    </div>
+                  </li>
+                );
+              })}
+              {filtered.length === 0 && (
+                <li className="py-8 text-center text-sm text-muted-foreground">
+                  没有叫「{query.trim()}」的课程
+                </li>
+              )}
+            </ul>
+            <p className="-mt-2 pb-3 text-center text-xs text-muted-foreground/70">
+              长按课程可以改名或删除
+            </p>
+          </>
+        )}
       </div>
 
-      {adding && (
+      <Drawer open={!!actionTarget} onOpenChange={(o) => !o && setActionTarget(null)}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>{actionTarget?.name}</DrawerTitle>
+          </DrawerHeader>
+          <div className="space-y-1 px-4 pb-8">
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(actionTarget);
+                setActionTarget(null);
+              }}
+              className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 active:bg-muted"
+            >
+              <Pencil className="size-4 text-muted-foreground" />
+              <span className="text-sm">编辑课程（改名 / 教师 / 颜色）</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDeleting(actionTarget);
+                setActionTarget(null);
+              }}
+              className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 text-destructive active:bg-muted"
+            >
+              <Trash2 className="size-4" />
+              <span className="text-sm">删除课程</span>
+            </button>
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      {editing && (
         <CourseEditorDialog
-          course={null}
-          defaultColor={COURSE_COLORS[courses.length % COURSE_COLORS.length]}
+          course={editing}
+          photoCount={countByCourse.get(editing.id) ?? 0}
           onSaved={() => {
-            setAdding(false);
+            setEditing(null);
             load();
           }}
-          onClose={() => setAdding(false)}
+          onClose={() => setEditing(null)}
         />
       )}
+
       {deleting && (
         <AlertDialog open onOpenChange={(o) => !o && setDeleting(null)}>
           <AlertDialogContent>
