@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.vite/
+.turbo/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# QMuse 平台运行时诊断文件（.qmuse/project.json 是应用绑定，必须入库）
+.qmuse/last-import-error.json
