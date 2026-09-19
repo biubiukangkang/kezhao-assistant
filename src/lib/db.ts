@@ -120,6 +120,22 @@ export async function deletePhoto(id: string): Promise<void> {
 
 // ---------- 数据管理 ----------
 
+/** 照片同步文件夹的句柄（FileSystemDirectoryHandle 可结构化克隆存入 IndexedDB） */
+export async function savePhotoFolder(h: FileSystemDirectoryHandle): Promise<void> {
+  const db = await getDB();
+  await db.put("meta", h, "photoFolder");
+}
+
+export async function getPhotoFolder(): Promise<FileSystemDirectoryHandle | null> {
+  const db = await getDB();
+  return ((await db.get("meta", "photoFolder")) as FileSystemDirectoryHandle | undefined) ?? null;
+}
+
+export async function clearPhotoFolder(): Promise<void> {
+  const db = await getDB();
+  await db.delete("meta", "photoFolder");
+}
+
 export async function clearAllData(): Promise<void> {
   const db = await getDB();
   const tx = db.transaction(["courses", "slots", "photos", "meta"], "readwrite");

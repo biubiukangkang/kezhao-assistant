@@ -314,6 +314,18 @@ function CoursesPage() {
         />
       )}
 
+      {adding && (
+        <CourseEditorDialog
+          course={null}
+          defaultColor={COURSE_COLORS[courses.length % COURSE_COLORS.length]}
+          onSaved={() => {
+            setAdding(false);
+            load();
+          }}
+          onClose={() => setAdding(false)}
+        />
+      )}
+
       {deleting && (
         <AlertDialog open onOpenChange={(o) => !o && setDeleting(null)}>
           <AlertDialogContent>

@@ -34,6 +34,14 @@ import { MAX_SEMESTER_WEEKS, getSemesterWeek, weeksLabel } from "@/lib/match";
 import { hhmmToMin, minToHHmm, periodLabel } from "@/lib/periods";
 import { seedDemoData } from "@/lib/seed";
 import { exportBackup, importBackup } from "@/lib/backup";
+import {
+  folderState,
+  folderSupported,
+  pickFolder,
+  regrantFolder,
+  stopFolderSync,
+  syncAllPhotos,
+} from "@/lib/photo-folder";
 import { WEEKDAY_NAMES, type AppSettings } from "@/lib/types";
 
 export const Route = createFileRoute("/settings")({
@@ -82,8 +90,14 @@ function SettingsPage() {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [folder, setFolder] = useState<{
+    name: string | null;
+    permission: "granted" | "prompt" | "denied" | null;
+  } | null>(null);
   const xlsRef = useRef<HTMLInputElement>(null);
   const restoreRef = useRef<HTMLInputElement>(null);
+  const folderOk = folderSupported();
 
   async function handleXlsFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -106,7 +120,8 @@ function SettingsPage() {
 
   useEffect(() => {
     void getSettings().then(setSettings);
-  }, []);
+    if (folderOk) void folderState().then(setFolder);
+  }, [folderOk]);
 
   if (!settings) return null;
 
@@ -192,6 +207,49 @@ function SettingsPage() {
       toast.error("恢复失败，确认选择的是本应用导出的备份文件");
     } finally {
       setRestoring(false);
+    }
+  }
+
+  async function refreshFolder() {
+    setFolder(await folderState());
+  }
+
+  async function handlePickFolder() {
+    try {
+      const name = await pickFolder();
+      if (name) toast.success(`已开启同步：${name}`, { description: "以后拍的照片会自动存一份进去" });
+      await refreshFolder();
+    } catch {
+      // 用户取消选择
+    }
+  }
+
+  async function handleRegrant() {
+    const ok = await regrantFolder();
+    if (!ok) toast.error("授权没有通过，再点一次试试");
+    await refreshFolder();
+  }
+
+  async function handleStopSync() {
+    await stopFolderSync();
+    toast("已停止文件夹同步");
+    await refreshFolder();
+  }
+
+  async function handleSyncAll() {
+    setSyncing(true);
+    try {
+      const { ok, fail } = await syncAllPhotos();
+      if (ok + fail === 0) toast("没有需要同步的照片");
+      else
+        toast.success(`已同步 ${ok} 张${fail > 0 ? `，失败 ${fail} 张` : ""}`, {
+          description: "打开你选的文件夹就能看到",
+        });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "同步失败");
+      await refreshFolder();
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -341,7 +399,73 @@ function SettingsPage() {
         </div>
       </FoldCard>
 
-      <FoldCard title="数据" summary="备份 / 演示数据 / 清空">
+      <FoldCard title="数据" summary="文件夹同步 / 备份 / 演示数据 / 清空">
+        {folderOk ? (
+          <div className="space-y-2">
+            <h3 className="text-xs font-medium text-muted-foreground">照片同步文件夹</h3>
+            {!folder || folder.name === null ? (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  选一个电脑上的文件夹，以后拍的照片会自动存一份进去（相当于随时可看的备份）。
+                </p>
+                <Button
+                  variant="outline"
+                  className="min-h-11 w-full"
+                  onClick={handlePickFolder}
+                >
+                  选择文件夹并开启
+                </Button>
+              </>
+            ) : folder.permission === "granted" ? (
+              <>
+                <p className="text-xs">
+                  <span className="font-medium text-green-600">已开启</span>{" "}
+                  <span className="text-muted-foreground">
+                    同步到「{folder.name}」，新照片自动写入
+                  </span>
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="min-h-11 flex-1"
+                    disabled={syncing}
+                    onClick={handleSyncAll}
+                  >
+                    {syncing ? "同步中…" : "立即同步全部"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="min-h-11 flex-1 text-destructive hover:text-destructive"
+                    onClick={handleStopSync}
+                  >
+                    停止同步
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs">
+                  <span className="font-medium text-amber-600">需要重新授权</span>{" "}
+                  <span className="text-muted-foreground">
+                    文件夹「{folder.name}」的权限已过期
+                  </span>
+                </p>
+                <Button
+                  variant="outline"
+                  className="min-h-11 w-full"
+                  onClick={handleRegrant}
+                >
+                  重新授权文件夹
+                </Button>
+              </>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            当前浏览器不支持文件夹同步（用电脑版 Chrome / Edge 打开可开启）。
+          </p>
+        )}
+
         <div className="space-y-2">
           <Button
             variant="outline"

@@ -1,6 +1,7 @@
 import exifr from "exifr";
 import { getSettings, listCourses, listPhotos, listSlots, savePhoto, uid } from "./db";
 import { matchPhoto } from "./match";
+import { mirrorPhotoIfEnabled } from "./photo-folder";
 import type { CaptureSource, Photo } from "./types";
 
 export type ProgressFn = (done: number, total: number) => void;
@@ -74,6 +75,7 @@ export async function archivePhoto(
     createdAt: Date.now(),
   };
   await savePhoto(photo);
+  void mirrorPhotoIfEnabled(photo); // 已开启同步文件夹时镜像一份（不阻塞主流程）
   return { courseId: photo.courseId, courseName: course?.name ?? null, duplicate: false };
 }
 
