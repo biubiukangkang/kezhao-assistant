@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ColorSwatches } from "@/components/color-swatches";
+import { cn } from "@/lib/utils";
 import {
   deleteSlot,
   getSettings,
@@ -40,7 +41,14 @@ import {
   saveSlot,
   uid,
 } from "@/lib/db";
-import { getSemesterWeek, startOfDay, weekdayOf } from "@/lib/match";
+import {
+  findSlotConflicts,
+  getSemesterWeek,
+  slotWeekLabel,
+  startOfDay,
+  weekdayOf,
+  weeksOf,
+} from "@/lib/match";
 import {
   firstOverlappingPeriod,
   locateSlotPeriods,
@@ -189,8 +197,7 @@ function SchedulePage() {
                     </span>
                   )}
                   <span className="text-[10px] leading-3 text-muted-foreground">
-                    {slot.weekStart}-{slot.weekEnd}周
-                    {slot.oddEven === "odd" ? "单" : slot.oddEven === "even" ? "双" : ""}
+                    {slotWeekLabel(slot)}
                   </span>
                 </button>
               );
@@ -205,6 +212,7 @@ function SchedulePage() {
         <SlotEditorDialog
           settings={settings}
           courses={courses}
+          slots={slots}
           editor={editor}
           onClose={() => setEditor(null)}
           onSaved={load}
@@ -218,12 +226,14 @@ function SchedulePage() {
 function SlotEditorDialog({
   settings,
   courses,
+  slots,
   editor,
   onClose,
   onSaved,
 }: {
   settings: AppSettings;
   courses: Course[];
+  slots: ScheduleSlot[];
   editor: EditorState;
   onClose: () => void;
   onSaved: () => void;
@@ -234,6 +244,7 @@ function SlotEditorDialog({
   const initStart = editing
     ? (locatedInit?.start ?? firstOverlappingPeriod(editing.startMin, editing.endMin, periods))
     : editor.periodIdx;
+  const courseById = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
 
   const [courseChoice, setCourseChoice] = useState(
     editing?.courseId ?? courses[0]?.id ?? "__new",
@@ -245,21 +256,51 @@ function SlotEditorDialog({
   const [weekday, setWeekday] = useState(String(editing?.weekday ?? editor.weekday));
   const [startIdx, setStartIdx] = useState(initStart);
   const [endIdx, setEndIdx] = useState(locatedInit?.end ?? initStart);
-  const [weekStart, setWeekStart] = useState(String(editing?.weekStart ?? 1));
-  const [weekEnd, setWeekEnd] = useState(String(editing?.weekEnd ?? 16));
-  const [oddEven, setOddEven] = useState<ScheduleSlot["oddEven"]>(editing?.oddEven ?? "all");
+  const [weeks, setWeeks] = useState<number[]>(
+    editing ? weeksOf(editing) : Array.from({ length: 16 }, (_, i) => i + 1),
+  );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const conflicts = useMemo(
+    () =>
+      findSlotConflicts(
+        {
+          id: editing?.id,
+          courseId: courseChoice === "__new" ? "__new-course" : courseChoice,
+          weekday: Number(weekday),
+          startMin: periods[startIdx].startMin,
+          endMin: periods[endIdx].endMin,
+          weeks,
+        },
+        slots,
+      ),
+    [editing, courseChoice, weekday, startIdx, endIdx, weeks, slots, periods],
+  );
+
+  function toggleWeek(w: number) {
+    setWeeks((prev) =>
+      prev.includes(w) ? prev.filter((x) => x !== w) : [...prev, w].sort((a, b) => a - b),
+    );
+  }
+
+  const WEEK_PRESETS: [string, number[]][] = [
+    ["1-16周", Array.from({ length: 16 }, (_, i) => i + 1)],
+    ["1-8周", Array.from({ length: 8 }, (_, i) => i + 1)],
+    ["9-16周", Array.from({ length: 8 }, (_, i) => i + 9)],
+    ["单周", Array.from({ length: 10 }, (_, i) => i * 2 + 1)],
+    ["双周", Array.from({ length: 10 }, (_, i) => i * 2 + 2)],
+    ["全部", Array.from({ length: 20 }, (_, i) => i + 1)],
+  ];
+
   async function handleSave() {
-    const ws = Number(weekStart);
-    const we = Number(weekEnd);
+    const ws = [...new Set(weeks)].sort((a, b) => a - b);
     if (courseChoice === "__new" && !newName.trim()) {
       setError("给新课程起个名字");
       return;
     }
-    if (!Number.isInteger(ws) || !Number.isInteger(we) || ws < 1 || we < ws || we > 30) {
-      setError("周次要填 1-30 的数字，且结束周不早于起始周");
+    if (ws.length === 0) {
+      setError("至少勾选一个周次");
       return;
     }
     setSaving(true);
@@ -275,15 +316,18 @@ function SlotEditorDialog({
           createdAt: Date.now(),
         });
       }
+      // 双写：weeks 为准，范围字段按 weeks 推导（兼容旧读取）
+      const step2 = ws.length >= 6 && ws.every((w, i) => i === 0 || w - ws[i - 1] === 2);
       await saveSlot({
         id: editing?.id ?? uid(),
         courseId,
         weekday: Number(weekday),
         startMin: periods[startIdx].startMin,
         endMin: periods[endIdx].endMin,
-        weekStart: ws,
-        weekEnd: we,
-        oddEven,
+        weeks: ws,
+        weekStart: ws[0],
+        weekEnd: ws[ws.length - 1],
+        oddEven: step2 && ws[0] % 2 === 1 ? "odd" : step2 && ws[0] % 2 === 0 ? "even" : "all",
       });
       onSaved();
       onClose();
@@ -360,22 +404,6 @@ function SlotEditorDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label>单双周</Label>
-              <Select
-                value={oddEven}
-                onValueChange={(v) => setOddEven(v as ScheduleSlot["oddEven"])}
-              >
-                <SelectTrigger className="min-h-11 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">每周</SelectItem>
-                  <SelectItem value="odd">单周</SelectItem>
-                  <SelectItem value="even">双周</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -425,29 +453,61 @@ function SlotEditorDialog({
             （时间在「设置」里可按学校作息调整）
           </p>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>起始周</Label>
-              <Input
-                type="number"
-                min={1}
-                max={30}
-                value={weekStart}
-                onChange={(e) => setWeekStart(e.target.value)}
-                className="min-h-11"
-              />
+          <div className="space-y-2">
+            <Label>周次</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {WEEK_PRESETS.map(([label, preset]) => {
+                const active =
+                  preset.length === weeks.length && preset.every((w, i) => weeks[i] === w);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setWeeks([...preset])}
+                    className={cn(
+                      "min-h-8 rounded-full border px-3 text-xs transition-colors",
+                      active
+                        ? "border-primary bg-primary font-medium text-primary-foreground"
+                        : "bg-background text-muted-foreground active:bg-muted",
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
-            <div className="space-y-1.5">
-              <Label>结束周</Label>
-              <Input
-                type="number"
-                min={1}
-                max={30}
-                value={weekEnd}
-                onChange={(e) => setWeekEnd(e.target.value)}
-                className="min-h-11"
-              />
+            <div className="grid grid-cols-5 gap-1.5">
+              {Array.from({ length: 20 }, (_, i) => i + 1).map((w) => {
+                const on = weeks.includes(w);
+                return (
+                  <button
+                    key={w}
+                    type="button"
+                    aria-label={`第 ${w} 周`}
+                    onClick={() => toggleWeek(w)}
+                    className={cn(
+                      "min-h-9 rounded-md border text-xs transition-colors",
+                      on
+                        ? "border-primary bg-primary font-medium text-primary-foreground"
+                        : "bg-background text-muted-foreground active:bg-muted",
+                    )}
+                  >
+                    {w}
+                  </button>
+                );
+              })}
             </div>
+            {conflicts.length > 0 && (
+              <div className="space-y-0.5 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-700">
+                {conflicts.map((s) => (
+                  <p key={s.id}>
+                    ⚠ 与《{courseById.get(s.courseId)?.name ?? "其他课程"}》
+                    {WEEKDAY_NAMES[s.weekday - 1]} {minToHHmm(s.startMin)}–{minToHHmm(s.endMin)}{" "}
+                    时间重叠，仍可保存
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}

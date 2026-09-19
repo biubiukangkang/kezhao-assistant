@@ -7,16 +7,18 @@ export interface Course {
   createdAt: number;
 }
 
-/** 课时段：星期 + 时间范围（距当天 0 点的分钟数）+ 周次范围 */
+/** 课时段：星期 + 时间范围（距当天 0 点的分钟数）+ 周次 */
 export interface ScheduleSlot {
   id: string;
   courseId: string;
   weekday: number; // 1=周一 … 7=周日
   startMin: number;
   endMin: number;
-  weekStart: number; // 学期周次，从 1 起
+  weekStart: number; // 学期周次，从 1 起（旧字段，新数据保存时双写 min/max）
   weekEnd: number;
-  oddEven: "all" | "odd" | "even";
+  oddEven: "all" | "odd" | "even"; // 旧字段，新数据保存时按 weeks 推导
+  /** 任意周次组合（如 1-3,5-7 → [1,2,3,5,6,7]）；存在时优先于上面的范围表达 */
+  weeks?: number[];
 }
 
 export type CaptureSource = "camera" | "exif" | "mtime" | "manual";

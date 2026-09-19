@@ -6,7 +6,7 @@ import { EmptySketch } from "@/components/empty-sketch";
 import { PageShell } from "@/components/page-shell";
 import { archiveFiles, type BatchResult } from "@/lib/archive";
 import { getSettings, listCourses, listPhotos, listSlots } from "@/lib/db";
-import { getSemesterWeek, slotsOnDate, weekdayOf } from "@/lib/match";
+import { getSemesterWeek, slotWeekLabel, slotsOnDate, weekdayOf } from "@/lib/match";
 import { locateSlotPeriods, minToHHmm, periodLabel } from "@/lib/periods";
 import {
   WEEKDAY_NAMES,
@@ -138,7 +138,7 @@ function HomePage() {
                       <div className="mt-0.5 text-xs text-muted-foreground">
                         {minToHHmm(s.startMin)}–{minToHHmm(s.endMin)}
                         {located !== null ? ` · ${periodLabel(located.start)} 节` : ""}
-                        {` · 第 ${s.weekStart}-${s.weekEnd} 周`}
+                        {` · ${slotWeekLabel(s)}`}
                       </div>
                     </div>
                     {isNow && (
