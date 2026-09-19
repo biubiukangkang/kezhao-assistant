@@ -15,12 +15,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { CourseEditorDialog } from "@/components/course-editor-dialog";
 import { COURSE_COLORS } from "@/lib/types";
 import { deleteCourse, listCourses, listPhotos } from "@/lib/db";
@@ -30,7 +24,9 @@ export const Route = createFileRoute("/courses")({
   component: CoursesPage,
 });
 
-/** 课程库：一摞讲义。长按课程卡（桌面右键）弹出编辑/删除；顶部搜索（W3 接 OCR 全文检索） */
+type MenuPos = { left: number; top: number; below: boolean };
+
+/** 课程库：一摞讲义。长按课程卡（桌面右键）从卡片下方弹出编辑/删除；顶部搜索（W3 接 OCR 全文检索） */
 function CoursesPage() {
   const navigate = useNavigate();
   const [courses, setCourses] = useState<Course[]>([]);
@@ -40,7 +36,9 @@ function CoursesPage() {
   const [editing, setEditing] = useState<Course | null>(null);
   const [deleting, setDeleting] = useState<Course | null>(null);
   const [actionTarget, setActionTarget] = useState<Course | null>(null);
+  const [menuPos, setMenuPos] = useState<MenuPos | null>(null);
   const pressTimer = useRef<number | undefined>(undefined);
+  const pressEl = useRef<HTMLElement | null>(null);
   const longPressed = useRef(false);
 
   const load = () => {
@@ -88,14 +86,20 @@ function CoursesPage() {
     [urls],
   );
 
-  function openActions(c: Course) {
+  function openActions(c: Course, el: HTMLElement) {
     if ("vibrate" in navigator) navigator.vibrate(10);
     longPressed.current = true;
+    const rect = el.getBoundingClientRect();
+    const below = rect.bottom + 130 < window.innerHeight; // 菜单高约 110，放得下就朝下弹
+    setMenuPos({ left: rect.left, top: rect.bottom, below });
     setActionTarget(c);
   }
-  function startPress(c: Course) {
+  function startPress(c: Course, el: HTMLElement) {
+    pressEl.current = el;
     window.clearTimeout(pressTimer.current);
-    pressTimer.current = window.setTimeout(() => openActions(c), 500);
+    pressTimer.current = window.setTimeout(() => {
+      if (pressEl.current) openActions(c, pressEl.current);
+    }, 500);
   }
   function clearPress() {
     window.clearTimeout(pressTimer.current);
@@ -194,12 +198,12 @@ function CoursesPage() {
                       aria-label={`课程 ${c.name}，长按管理`}
                       onContextMenu={(e) => {
                         e.preventDefault();
-                        openActions(c);
+                        openActions(c, e.currentTarget);
                       }}
-                      onTouchStart={() => startPress(c)}
+                      onTouchStart={(e) => startPress(c, e.currentTarget)}
                       onTouchEnd={clearPress}
                       onTouchMove={clearPress}
-                      onMouseDown={() => startPress(c)}
+                      onMouseDown={(e) => startPress(c, e.currentTarget)}
                       onMouseUp={clearPress}
                       onMouseLeave={clearPress}
                       onClick={() => openAlbum(c)}
@@ -250,22 +254,38 @@ function CoursesPage() {
         )}
       </div>
 
-      <Drawer open={!!actionTarget} onOpenChange={(o) => !o && setActionTarget(null)}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>{actionTarget?.name}</DrawerTitle>
-          </DrawerHeader>
-          <div className="space-y-1 px-4 pb-8">
+      {actionTarget && menuPos && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setActionTarget(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setActionTarget(null);
+            }}
+          />
+          <div
+            className="fixed z-50 w-56 origin-top rounded-xl border bg-card p-1 shadow-lg animate-in fade-in-0 zoom-in-95 duration-100"
+            style={{
+              left: Math.min(menuPos.left, window.innerWidth - 224 - 12),
+              ...(menuPos.below
+                ? { top: menuPos.top + 6 }
+                : { bottom: window.innerHeight - menuPos.top + 6 }),
+            }}
+          >
+            <div className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+              {actionTarget.name}
+            </div>
             <button
               type="button"
               onClick={() => {
                 setEditing(actionTarget);
                 setActionTarget(null);
               }}
-              className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 active:bg-muted"
+              className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 text-sm active:bg-muted"
             >
               <Pencil className="size-4 text-muted-foreground" />
-              <span className="text-sm">编辑课程（改名 / 教师 / 颜色）</span>
+              编辑课程
             </button>
             <button
               type="button"
@@ -273,14 +293,14 @@ function CoursesPage() {
                 setDeleting(actionTarget);
                 setActionTarget(null);
               }}
-              className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 text-destructive active:bg-muted"
+              className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 text-sm text-destructive active:bg-muted"
             >
               <Trash2 className="size-4" />
-              <span className="text-sm">删除课程</span>
+              删除课程
             </button>
           </div>
-        </DrawerContent>
-      </Drawer>
+        </>
+      )}
 
       {editing && (
         <CourseEditorDialog
