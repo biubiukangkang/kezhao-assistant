@@ -10,12 +10,19 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, FolderInput, Star, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, FolderInput, Star, Trash2, X } from "lucide-react";
 import { minToHHmm } from "@/lib/periods";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import type { Course, Photo } from "@/lib/types";
 
-/** 全屏沉浸查看器（iOS 相册范式）：黑底、点图关闭、左右切换、星标、移动改派、备忘录备注、删除 */
+function toLocalInput(t: number): string {
+  const d = new Date(t);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** 全屏沉浸查看器（iOS 相册范式）：黑底、点图关闭、左右切换、星标、移动改派、改时间、备注、删除 */
 export function PhotoViewer({
   photos,
   index,
@@ -27,6 +34,7 @@ export function PhotoViewer({
   onDelete,
   onMoveTo,
   onUpdateNote,
+  onUpdateCaptureAt,
 }: {
   photos: Photo[];
   index: number;
@@ -38,10 +46,13 @@ export function PhotoViewer({
   onDelete: (p: Photo) => void;
   onMoveTo: (p: Photo, courseId: string | null) => void;
   onUpdateNote: (p: Photo, note: string) => void;
+  onUpdateCaptureAt: (p: Photo, t: number) => void;
 }) {
   const photo = photos[index];
   const [moveOpen, setMoveOpen] = useState(false);
   const [editingNote, setEditingNote] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
+  const [timeDraft, setTimeDraft] = useState("");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -202,6 +213,50 @@ export function PhotoViewer({
             </div>
             <AlertDialogFooter>
               <AlertDialogCancel>取消</AlertDialogCancel>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={timeOpen}
+          onOpenChange={(o) => {
+            setTimeOpen(o);
+            if (o) setTimeDraft(toLocalInput(photo.capturedAt));
+          }}
+        >
+          <AlertDialogTrigger asChild>
+            <button
+              type="button"
+              aria-label="修改拍摄时间"
+              className="rounded-full p-3 active:bg-white/10"
+            >
+              <Clock className="size-5" />
+            </button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>修改拍摄时间</AlertDialogTitle>
+              <AlertDialogDescription>
+                手机时间不准导致归错课的时候用。改完会按新时间重新归到对应课程。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <Input
+              type="datetime-local"
+              value={timeDraft}
+              onChange={(e) => setTimeDraft(e.target.value)}
+              className="min-h-11"
+              aria-label="拍摄时间"
+            />
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  const t = new Date(timeDraft).getTime();
+                  if (!Number.isNaN(t)) onUpdateCaptureAt(photo, t);
+                }}
+              >
+                保存
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

@@ -138,7 +138,13 @@ function CameraPage() {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (files.length === 0) return;
-    void archiveFiles(files).then(toastBatch);
+    setShotNote(`解析中 0/${files.length}…`);
+    void archiveFiles(files, (done, total) => setShotNote(`解析中 ${done}/${total}…`)).then(
+      (r) => {
+        toastBatch(r);
+        setShotNote("");
+      },
+    );
   }
 
   return (

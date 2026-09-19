@@ -114,10 +114,7 @@ export function parseTimetableWorkbook(data: ArrayBuffer): XlsSlot[] {
       }
 
       for (const course of courses) {
-        if (!course.name || !course.weeks || course.weeks.length === 0) {
-          console.error("[timetable-xls] 异常格子:", JSON.stringify({ parts, courses }));
-          continue;
-        }
+        if (!course.name || !course.weeks || course.weeks.length === 0) continue;
         slots.push({
           name: course.name,
           teacher: course.teacher,

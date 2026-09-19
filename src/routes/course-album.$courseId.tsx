@@ -88,6 +88,10 @@ function AlbumPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [viewIdx, setViewIdx] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const [visibleGroups, setVisibleGroups] = useState(3);
   const fileRef = useRef<HTMLInputElement>(null);
   // 待分类专属：多选批量移动
   const [selectMode, setSelectMode] = useState(false);
@@ -119,6 +123,7 @@ function AlbumPage() {
         g.photos.push(p);
       }
       setGroups(list);
+      setVisibleGroups(3);
     });
   };
   useEffect(() => {
@@ -191,14 +196,27 @@ function AlbumPage() {
     });
   }
 
+  function handleUpdateTime(p: Photo, t: number) {
+    void savePhoto({ ...p, capturedAt: t, capturedSource: "manual" }).then(() => {
+      setViewIdx(flatPhotos.findIndex((x) => x.id === p.id));
+      load();
+      toast.success("时间已更新，照片按新时间重新归类");
+    });
+  }
+
   function onFiles(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (files.length === 0) return;
-    void addPhotosToCourse(files, isPending ? null : courseId).then((r) => {
-      toastBatch(r);
-      load();
-    });
+    setImportProgress({ done: 0, total: files.length });
+    void addPhotosToCourse(files, isPending ? null : courseId, (done, total) =>
+      setImportProgress({ done, total }),
+    )
+      .then((r) => {
+        toastBatch(r);
+        load();
+      })
+      .finally(() => setImportProgress(null));
   }
 
   function toggleSelect(id: string) {
@@ -280,6 +298,12 @@ function AlbumPage() {
         )}
       </header>
 
+      {importProgress && (
+        <p className="mb-3 px-4 text-xs text-muted-foreground">
+          添加中 {importProgress.done}/{importProgress.total}…
+        </p>
+      )}
+
       {total === 0 ? (
         <div className="flex flex-col items-center gap-2 pt-16 text-center">
           <EmptySketch className="w-36" />
@@ -339,7 +363,7 @@ function AlbumPage() {
         </div>
       ) : (
         <div className="space-y-6 px-4 pb-8">
-          {groups.map((g) => (
+          {groups.slice(0, visibleGroups).map((g) => (
             <section key={g.key}>
               <h2 className="mb-2 text-xs font-medium text-muted-foreground">{g.label}</h2>
               <div className="space-y-3">
@@ -381,6 +405,16 @@ function AlbumPage() {
               </div>
             </section>
           ))}
+          {groups.length > visibleGroups && (
+            <button
+              type="button"
+              onClick={() => setVisibleGroups((n) => n + 3)}
+              className="min-h-11 w-full rounded-xl border text-sm text-muted-foreground transition-colors active:bg-muted"
+            >
+              加载更早的照片（还有{" "}
+              {groups.length - visibleGroups} 天）
+            </button>
+          )}
         </div>
       )}
 
@@ -396,6 +430,7 @@ function AlbumPage() {
           onDelete={handleDelete}
           onMoveTo={handleMoveTo}
           onUpdateNote={handleUpdateNote}
+          onUpdateCaptureAt={handleUpdateTime}
         />
       )}
 

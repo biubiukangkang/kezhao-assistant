@@ -41,6 +41,7 @@ function HomePage() {
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -88,7 +89,16 @@ function HomePage() {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (files.length === 0) return;
-    void archiveFiles(files).then(toastBatch);
+    setImportProgress({ done: 0, total: files.length });
+    void archiveFiles(files, (done, total) => setImportProgress({ done, total }))
+      .then((r) => {
+        toastBatch(r);
+        void Promise.all([listCourses(), listPhotos()]).then(([c, p]) => {
+          setCourses(c);
+          setPhotos(p);
+        });
+      })
+      .finally(() => setImportProgress(null));
   }
 
   return (
@@ -235,10 +245,13 @@ function HomePage() {
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border text-sm text-muted-foreground transition-colors hover:bg-accent active:bg-muted"
+          disabled={!!importProgress}
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border text-sm text-muted-foreground transition-colors hover:bg-accent active:bg-muted disabled:opacity-60"
         >
           <ImagePlus className="size-4" />
-          从相册导入
+          {importProgress
+            ? `解析中 ${importProgress.done}/${importProgress.total}…`
+            : "从相册导入"}
         </button>
       </div>
 

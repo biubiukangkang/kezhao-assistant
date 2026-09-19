@@ -33,6 +33,7 @@ import { clearAllData, getSettings, saveSettings } from "@/lib/db";
 import { MAX_SEMESTER_WEEKS, getSemesterWeek, weeksLabel } from "@/lib/match";
 import { hhmmToMin, minToHHmm, periodLabel } from "@/lib/periods";
 import { seedDemoData } from "@/lib/seed";
+import { exportBackup, importBackup } from "@/lib/backup";
 import { WEEKDAY_NAMES, type AppSettings } from "@/lib/types";
 
 export const Route = createFileRoute("/settings")({
@@ -79,7 +80,10 @@ function SettingsPage() {
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [droppedFailed, setDroppedFailed] = useState<number[]>([]);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const xlsRef = useRef<HTMLInputElement>(null);
+  const restoreRef = useRef<HTMLInputElement>(null);
 
   async function handleXlsFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -155,6 +159,40 @@ function SettingsPage() {
   async function handleClear() {
     await clearAllData();
     void getSettings().then(setSettings);
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const { blob, filename } = await exportBackup();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast.success("备份已下载", { description: "文件保存在浏览器下载目录" });
+    } catch {
+      toast.error("导出失败，重试一次");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleRestore(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setRestoring(true);
+    try {
+      const r = await importBackup(file);
+      toast.success(`已恢复 ${r.courses} 门课 · ${r.photos} 张照片`);
+      void getSettings().then(setSettings);
+    } catch {
+      toast.error("恢复失败，确认选择的是本应用导出的备份文件");
+    } finally {
+      setRestoring(false);
+    }
   }
 
   function openPaste() {
@@ -303,7 +341,37 @@ function SettingsPage() {
         </div>
       </FoldCard>
 
-      <FoldCard title="数据" summary="填充演示数据，或清空全部">
+      <FoldCard title="数据" summary="备份 / 演示数据 / 清空">
+        <div className="space-y-2">
+          <Button
+            variant="outline"
+            className="min-h-11 w-full"
+            disabled={exporting}
+            onClick={handleExport}
+          >
+            {exporting ? "导出中…" : "导出备份（含全部照片）"}
+          </Button>
+          <Button
+            variant="outline"
+            className="min-h-11 w-full"
+            disabled={restoring}
+            onClick={() => restoreRef.current?.click()}
+          >
+            {restoring ? "恢复中…" : "从备份恢复"}
+          </Button>
+          <input
+            ref={restoreRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={handleRestore}
+            aria-label="选择备份文件"
+          />
+          <p className="text-center text-xs text-muted-foreground">
+            数据只在本机浏览器里，换设备或清缓存前请先导出备份。
+          </p>
+        </div>
+
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="outline" className="min-h-11 w-full" disabled={seeding}>
@@ -378,6 +446,7 @@ function SettingsPage() {
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}
                 rows={8}
+                maxLength={20000}
                 placeholder={
                   "高等数学 周一 1-2节 1-16周\n大学英语 周三 3-4节 单周\n数据结构 周五 5-6节 1-3周,5-7周"
                 }
