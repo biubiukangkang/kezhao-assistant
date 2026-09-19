@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "jobId": "import_149a4df5-b26f-49c3-ab01-f207da2c044d",
+  "status": "FAILED",
+  "stage": "FAILED",
+  "message": "源代码未通过导入校验，请修复后重新导入",
+  "diagnostic": "QMuse migration blocked: Existing TanStack root layout contains unsupported providers or UI: @/components/ui/sonner:Toaster.",
+  "failureDiagnostic": {
+    "version": 1,
+    "category": "SOURCE_CODE",
+    "stage": "MIGRATING_SOURCE",
+    "summary": "QMuse migration blocked: Existing TanStack root layout contains unsupported providers or UI: @/components/ui/sonner:Toaster.",
+    "fixableByModel": true,
+    "suggestedAction": "FIX_SOURCE_AND_RETRY",
+    "items": [
+      {
+        "message": "QMuse migration blocked: Existing TanStack root layout contains unsupported providers or UI: @/components/ui/sonner:Toaster."
+      }
+    ]
+  },
+  "retryCommand": "qmuse import . --env prod",
+  "retryAdvice": "在当前项目目录修复源码后执行，将更新已绑定的应用。",
+  "environment": "prod",
+  "generatedAt": "2026-09-19T04:39:45.909Z"
+}

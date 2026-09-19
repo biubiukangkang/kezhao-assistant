@@ -1,6 +1,21 @@
+import exifr from "exifr";
 import { getSettings, listCourses, listPhotos, listSlots, savePhoto, uid } from "./db";
 import { matchPhoto } from "./match";
 import type { CaptureSource, Photo } from "./types";
+
+/** 读照片真实拍摄时间：EXIF（DateTimeOriginal/CreateDate）优先，读不到回退文件修改时间 */
+async function readCaptureTime(f: File): Promise<{ t: number; source: CaptureSource }> {
+  try {
+    const exif = await exifr.parse(f);
+    const d = exif?.DateTimeOriginal ?? exif?.CreateDate;
+    if (d instanceof Date && !Number.isNaN(d.getTime()) && d.getTime() > 0) {
+      return { t: d.getTime(), source: "exif" };
+    }
+  } catch {
+    // 无 EXIF 或格式不支持（如部分截图、HEIC）
+  }
+  return { t: f.lastModified, source: "mtime" };
+}
 
 export type ArchiveResult = {
   courseId: string | null;
@@ -43,13 +58,14 @@ export async function archivePhoto(
   return { courseId: photo.courseId, courseName: course?.name ?? null, duplicate: false };
 }
 
-/** 批量导入（相册多选）：用文件修改时间兜底，size+修改时间去重 */
+/** 批量导入（相册多选）：拍摄时间 EXIF 优先、修改时间兜底，size+修改时间去重 */
 export async function archiveFiles(files: File[]): Promise<BatchResult> {
   const batchId = uid();
   const result: BatchResult = { archived: 0, pending: 0, duplicates: 0 };
   for (const f of files) {
     if (!f.type.startsWith("image/")) continue;
-    const r = await archivePhoto(f, f.lastModified, "mtime", {
+    const { t, source } = await readCaptureTime(f);
+    const r = await archivePhoto(f, t, source, {
       sourceKey: `${f.size}-${f.lastModified}`,
       batchId,
     });

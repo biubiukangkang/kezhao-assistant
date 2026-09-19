@@ -3,6 +3,7 @@ import { Camera, ImagePlus, Settings } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { EmptySketch } from "@/components/empty-sketch";
+import { PageShell } from "@/components/page-shell";
 import { archiveFiles, type BatchResult } from "@/lib/archive";
 import { getSettings, listCourses, listPhotos, listSlots } from "@/lib/db";
 import { getSemesterWeek, slotsOnDate, weekdayOf } from "@/lib/match";
@@ -15,7 +16,7 @@ import {
   type ScheduleSlot,
 } from "@/lib/types";
 
-export const Route = createFileRoute("/_app/")({
+export const Route = createFileRoute("/")({
   component: HomePage,
 });
 
@@ -91,7 +92,8 @@ function HomePage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-5rem)] flex-col px-4 pt-4">
+    <PageShell>
+      <div className="flex min-h-[calc(100vh-5rem)] flex-col px-4 pt-4">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">课照助手</h1>
@@ -241,6 +243,7 @@ function HomePage() {
       </div>
 
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
-    </div>
+      </div>
+    </PageShell>
   );
 }

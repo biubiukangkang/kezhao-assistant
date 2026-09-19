@@ -12,9 +12,9 @@
       "apiBaseUrl": "https://api.qmuse.cn",
       "appId": "2147940046996490",
       "spaceId": "S813017058484",
-      "lastVersionId": "81300017",
-      "lastSourceHash": "59f8e2987d238f2138e536f8277e0f2f9d6a8edde9da0bd55d3028ad6844222e",
-      "updatedAt": "2026-09-18T13:51:33.136Z"
+      "lastVersionId": "81600056",
+      "lastSourceHash": "3fd180d6b8466fe1057c8ddc4a685d9ff51553f1b087d2b056963153d3b3a104",
+      "updatedAt": "2026-09-19T04:44:20.180Z"
     }
   }
 }

@@ -2,6 +2,7 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ImagePlus, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
 import { archivePhoto, archiveFiles, type BatchResult } from "@/lib/archive";
 import { uid } from "@/lib/db";
 
@@ -174,6 +175,7 @@ function CameraPage() {
       )}
       {flash && <div className="pointer-events-none absolute inset-0 bg-white/80" />}
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
+      <Toaster />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
+import { PageShell } from "@/components/page-shell";
 import { ArrowLeft } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import {
@@ -54,7 +55,7 @@ import {
   type ScheduleSlot,
 } from "@/lib/types";
 
-export const Route = createFileRoute("/_app/schedule")({
+export const Route = createFileRoute("/schedule")({
   component: SchedulePage,
 });
 
@@ -100,6 +101,7 @@ function SchedulePage() {
     .filter((x) => x.startIdx >= 0 && periods.length > 0);
 
   return (
+    <PageShell>
     <div className="px-4 pt-6">
       <header className="sticky top-0 z-30 -mx-4 mb-4 flex items-center gap-1 border-b bg-background/95 px-6 py-2.5 backdrop-blur">
         <button
@@ -208,7 +210,8 @@ function SchedulePage() {
           onSaved={load}
         />
       )}
-    </div>
+      </div>
+    </PageShell>
   );
 }
 

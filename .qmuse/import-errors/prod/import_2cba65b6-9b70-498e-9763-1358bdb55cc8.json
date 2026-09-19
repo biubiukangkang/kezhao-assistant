@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "jobId": "import_2cba65b6-9b70-498e-9763-1358bdb55cc8",
+  "status": "FAILED",
+  "stage": "FAILED",
+  "message": "源代码未通过导入校验，请修复后重新导入",
+  "diagnostic": "(node:23934) Warning: Accessing non-existent property 'replaceRouteChunk' of module exports inside circular dependency\n(Use `node --trace-warnings ...` to show where the warning was created)\nError: Conflicting configuration paths were found for the following routes: \"/\", \"/\".\nPlease ensure each Route has a unique full path.\nConflicting files: \n /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/index.tsx\n /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/_app/index.tsx\n\n    at /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-generator/dist/cjs/generator.cjs:147:13\n    at async Object.generate (/home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/generate.cjs:5:3)\n    at async /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/index.cjs:13:3\n\n(node:23934) Warning: Accessing non-existent property 'replaceRouteChunk' of module exports inside circular dependency\n(Use `node --trace-warnings ...` to show where the warning was created)\nError: Conflicting configuration paths were found for the following routes: \"/\", \"/\".\nPlease ensure each Route has a unique full path.\nConflicting files: \n /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/index.tsx\n /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/_app/index.tsx\n\n    at /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-generator/dist/cjs/generator.cjs:147:13\n    at async Object.generate (/home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/generate.cjs:5:3)\n    at async /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/index.cjs:13:3\n\nExecError: Command failed with exit code 1: (node:23934) Warning: Accessing non-existent property 'replaceRouteChunk' of module exports inside circular dependency\n(Use `node --trace-warnings ...` to show where the warning was created)\nError: Conflicting configuration paths were found for the following routes: \"/\", \"/\".\nPlease ensure each Route has a unique full path.\nConflicting files: \n /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/index.tsx\n /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/_app/index.tsx\n\n    at /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-generator/dist/cjs/generator.cjs:147:13\n    at async Object.generate (/home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/generate.cjs:5:3)\n    at async /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/index.cjs:13:3\n\nCaused by: ExecError: Command failed with exit code 1: (node:23934) Warning: Accessing non-existent property 'replaceRouteChunk' of module exports inside circular dependency\n(Use `node --trace-warnings ...` to show where the warning was created)\nError: Conflicting configuration paths were found for the following routes: \"/\", \"/\".\nPlease ensure each Route has a unique full path.\nConflicting files: \n /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/index.tsx\n /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/_app/index.tsx\n\n    at /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-generator/dist/cjs/generator.cjs:147:13\n    at async Object.generate (/home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/generate.cjs:5:3)\n    at async /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/index.cjs:13:3\n",
+  "failureDiagnostic": {
+    "version": 1,
+    "category": "SOURCE_CODE",
+    "stage": "REVIEWING_CONTENT",
+    "code": "APP_IMPORT_ROUTE_GENERATION_FAILED",
+    "summary": "Error: Conflicting configuration paths were found for the following routes: \"/\", \"/\".",
+    "fixableByModel": true,
+    "suggestedAction": "FIX_SOURCE_AND_RETRY",
+    "items": [
+      {
+        "message": "Error: Conflicting configuration paths were found for the following routes: \"/\", \"/\"."
+      },
+      {
+        "message": "Error: Conflicting configuration paths were found for the following routes: \"/\", \"/\"."
+      },
+      {
+        "message": "Error: Conflicting configuration paths were found for the following routes: \"/\", \"/\"."
+      },
+      {
+        "message": "Error: Conflicting configuration paths were found for the following routes: \"/\", \"/\"."
+      },
+      {
+        "message": "(node:23934) Warning: Accessing non-existent property 'replaceRouteChunk' of module exports inside circular dependency"
+      },
+      {
+        "message": "(Use `node --trace-warnings ...` to show where the warning was created)"
+      },
+      {
+        "message": "Please ensure each Route has a unique full path."
+      },
+      {
+        "message": "Conflicting files:"
+      },
+      {
+        "message": "/home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/index.tsx"
+      },
+      {
+        "message": "/home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/_app/index.tsx"
+      },
+      {
+        "message": "at /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-generator/dist/cjs/generator.cjs:147:13"
+      },
+      {
+        "message": "at async Object.generate (/home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/generate.cjs:5:3)"
+      },
+      {
+        "message": "at async /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-cli/dist/cjs/index.cjs:13:3"
+      },
+      {
+        "message": "(node:23934) Warning: Accessing non-existent property 'replaceRouteChunk' of module exports inside circular dependency"
+      },
+      {
+        "message": "(Use `node --trace-warnings ...` to show where the warning was created)"
+      },
+      {
+        "message": "Please ensure each Route has a unique full path."
+      },
+      {
+        "message": "Conflicting files:"
+      },
+      {
+        "message": "/home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/index.tsx"
+      },
+      {
+        "message": "/home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/src/routes/_app/index.tsx"
+      },
+      {
+        "message": "at /home/admin/workspaces/WS_6aae124220b98759317595cb/.home/project/node_modules/@tanstack/router-generator/dist/cjs/generator.cjs:147:13"
+      }
+    ]
+  },
+  "retryCommand": "qmuse import . --env prod",
+  "retryAdvice": "在当前项目目录修复源码后执行，将更新已绑定的应用。",
+  "environment": "prod",
+  "generatedAt": "2026-09-19T04:40:49.037Z"
+}

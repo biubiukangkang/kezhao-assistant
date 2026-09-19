@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { PageShell } from "@/components/page-shell";
 import { ChevronRight, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptySketch } from "@/components/empty-sketch";
@@ -6,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { listCourses, listPhotos } from "@/lib/db";
 import type { Course, Photo } from "@/lib/types";
 
-export const Route = createFileRoute("/_app/courses")({
+export const Route = createFileRoute("/courses")({
   component: CoursesPage,
 });
 
@@ -65,6 +66,7 @@ function CoursesPage() {
   const empty = courses.length === 0 && pendingCount === 0;
 
   return (
+    <PageShell>
     <div className="px-4 pt-6">
       <header className="mb-3">
         <h1 className="text-xl font-semibold tracking-tight">课程库</h1>
@@ -164,6 +166,7 @@ function CoursesPage() {
           </ul>
         </>
       )}
-    </div>
+      </div>
+    </PageShell>
   );
 }

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { PageShell } from "@/components/page-shell";
 import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -22,7 +23,7 @@ import { hhmmToMin, minToHHmm, periodLabel } from "@/lib/periods";
 import { seedDemoData } from "@/lib/seed";
 import type { AppSettings } from "@/lib/types";
 
-export const Route = createFileRoute("/_app/settings")({
+export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
@@ -104,6 +105,7 @@ function SettingsPage() {
   }
 
   return (
+    <PageShell>
     <div className="space-y-4 px-4 pt-6">
       <header>
         <h1 className="text-xl font-semibold tracking-tight">设置</h1>
@@ -228,6 +230,7 @@ function SettingsPage() {
       </FoldCard>
 
       <p className="pb-2 text-center text-xs text-muted-foreground">课照助手 · v0.1</p>
-    </div>
+      </div>
+    </PageShell>
   );
 }

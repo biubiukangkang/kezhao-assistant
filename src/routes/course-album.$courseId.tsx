@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { EmptySketch } from "@/components/empty-sketch";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { CourseEditorDialog } from "@/components/course-editor-dialog";
+import { Toaster } from "@/components/ui/sonner";
 import { addPhotosToCourse, type BatchResult } from "@/lib/archive";
 import { deletePhoto, listCourses, listPhotos, savePhoto } from "@/lib/db";
 import { weekdayOf } from "@/lib/match";
@@ -325,6 +326,7 @@ function AlbumPage() {
       )}
 
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
+      <Toaster />
     </div>
   );
 }

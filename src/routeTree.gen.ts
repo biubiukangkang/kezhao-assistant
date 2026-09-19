@@ -9,16 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AppRouteImport } from './routes/_app'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as CameraRouteImport } from './routes/camera'
-import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as AppCoursesRouteImport } from './routes/_app/courses'
-import { Route as AppScheduleRouteImport } from './routes/_app/schedule'
-import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as CoursesRouteImport } from './routes/courses'
+import { Route as ScheduleRouteImport } from './routes/schedule'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as CourseAlbumCourseIdRouteImport } from './routes/course-album.$courseId'
 
-const AppRoute = AppRouteImport.update({
-  id: '/_app',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CameraRoute = CameraRouteImport.update({
@@ -26,25 +26,20 @@ const CameraRoute = CameraRouteImport.update({
   path: '/camera',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppIndexRoute = AppIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppCoursesRoute = AppCoursesRouteImport.update({
+const CoursesRoute = CoursesRouteImport.update({
   id: '/courses',
   path: '/courses',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppScheduleRoute = AppScheduleRouteImport.update({
+const ScheduleRoute = ScheduleRouteImport.update({
   id: '/schedule',
   path: '/schedule',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
-const AppSettingsRoute = AppSettingsRouteImport.update({
+const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
 const CourseAlbumCourseIdRoute = CourseAlbumCourseIdRouteImport.update({
   id: '/course-album/$courseId',
@@ -53,30 +48,29 @@ const CourseAlbumCourseIdRoute = CourseAlbumCourseIdRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AppIndexRoute
+  '/': typeof IndexRoute
   '/camera': typeof CameraRoute
-  '/courses': typeof AppCoursesRoute
-  '/schedule': typeof AppScheduleRoute
-  '/settings': typeof AppSettingsRoute
+  '/courses': typeof CoursesRoute
+  '/schedule': typeof ScheduleRoute
+  '/settings': typeof SettingsRoute
   '/course-album/$courseId': typeof CourseAlbumCourseIdRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/camera': typeof CameraRoute
-  '/courses': typeof AppCoursesRoute
-  '/schedule': typeof AppScheduleRoute
-  '/settings': typeof AppSettingsRoute
+  '/courses': typeof CoursesRoute
+  '/schedule': typeof ScheduleRoute
+  '/settings': typeof SettingsRoute
   '/course-album/$courseId': typeof CourseAlbumCourseIdRoute
-  '/': typeof AppIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/_app': typeof AppRouteWithChildren
+  '/': typeof IndexRoute
   '/camera': typeof CameraRoute
-  '/_app/courses': typeof AppCoursesRoute
-  '/_app/schedule': typeof AppScheduleRoute
-  '/_app/settings': typeof AppSettingsRoute
+  '/courses': typeof CoursesRoute
+  '/schedule': typeof ScheduleRoute
+  '/settings': typeof SettingsRoute
   '/course-album/$courseId': typeof CourseAlbumCourseIdRoute
-  '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -89,36 +83,38 @@ export interface FileRouteTypes {
     | '/course-album/$courseId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/camera'
     | '/courses'
     | '/schedule'
     | '/settings'
     | '/course-album/$courseId'
-    | '/'
   id:
     | '__root__'
-    | '/_app'
+    | '/'
     | '/camera'
-    | '/_app/courses'
-    | '/_app/schedule'
-    | '/_app/settings'
+    | '/courses'
+    | '/schedule'
+    | '/settings'
     | '/course-album/$courseId'
-    | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  AppRoute: typeof AppRouteWithChildren
+  IndexRoute: typeof IndexRoute
   CameraRoute: typeof CameraRoute
+  CoursesRoute: typeof CoursesRoute
+  ScheduleRoute: typeof ScheduleRoute
+  SettingsRoute: typeof SettingsRoute
   CourseAlbumCourseIdRoute: typeof CourseAlbumCourseIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/_app': {
-      id: '/_app'
-      path: ''
+    '/': {
+      id: '/'
+      path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof AppRouteImport
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/camera': {
@@ -128,33 +124,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CameraRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/': {
-      id: '/_app/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/courses': {
-      id: '/_app/courses'
+    '/courses': {
+      id: '/courses'
       path: '/courses'
       fullPath: '/courses'
-      preLoaderRoute: typeof AppCoursesRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof CoursesRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_app/schedule': {
-      id: '/_app/schedule'
+    '/schedule': {
+      id: '/schedule'
       path: '/schedule'
       fullPath: '/schedule'
-      preLoaderRoute: typeof AppScheduleRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof ScheduleRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/_app/settings': {
-      id: '/_app/settings'
+    '/settings': {
+      id: '/settings'
       path: '/settings'
       fullPath: '/settings'
-      preLoaderRoute: typeof AppSettingsRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/course-album/$courseId': {
       id: '/course-album/$courseId'
@@ -166,25 +155,12 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AppRouteChildren {
-  AppCoursesRoute: typeof AppCoursesRoute
-  AppScheduleRoute: typeof AppScheduleRoute
-  AppSettingsRoute: typeof AppSettingsRoute
-  AppIndexRoute: typeof AppIndexRoute
-}
-
-const AppRouteChildren: AppRouteChildren = {
-  AppCoursesRoute: AppCoursesRoute,
-  AppScheduleRoute: AppScheduleRoute,
-  AppSettingsRoute: AppSettingsRoute,
-  AppIndexRoute: AppIndexRoute,
-}
-
-const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
-  AppRoute: AppRouteWithChildren,
+  IndexRoute: IndexRoute,
   CameraRoute: CameraRoute,
+  CoursesRoute: CoursesRoute,
+  ScheduleRoute: ScheduleRoute,
+  SettingsRoute: SettingsRoute,
   CourseAlbumCourseIdRoute: CourseAlbumCourseIdRoute,
 }
 export const routeTree = rootRouteImport
