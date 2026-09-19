@@ -101,7 +101,7 @@ function SchedulePage() {
 
   return (
     <div className="px-4 pt-6">
-      <header className="mb-4 flex items-center gap-1">
+      <header className="sticky top-0 z-30 -mx-4 mb-4 flex items-center gap-1 border-b bg-background/95 px-6 py-2.5 backdrop-blur">
         <button
           type="button"
           aria-label="返回"

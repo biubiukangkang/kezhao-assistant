@@ -191,7 +191,7 @@ function AlbumPage() {
 
   return (
     <div className="mx-auto min-h-screen max-w-lg">
-      <header className="mb-3 flex items-center gap-1 px-2 pt-4">
+      <header className="sticky top-0 z-30 mb-3 flex items-center gap-1 border-b bg-background/95 px-2 py-2.5 pt-4 backdrop-blur">
         <button
           type="button"
           aria-label="返回"
