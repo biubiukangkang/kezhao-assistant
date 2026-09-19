@@ -35,6 +35,7 @@ function CameraPage() {
   const [shotCount, setShotCount] = useState(0);
   const [shotNote, setShotNote] = useState("");
   const noteTimer = useRef<number | undefined>(undefined);
+  const lastDeviceId = useRef<string | null>(null);
   const [facing, setFacing] = useState<"environment" | "user">("environment");
   const router = useRouter();
   // 一次打开相机 = 一批，首页「本次导入」按批整组展示
@@ -51,7 +52,14 @@ function CameraPage() {
     const timer = window.setTimeout(() => {
       if (!cancelled && !stream) setError("相机暂时打不开（可能没授权）。可以先从相册选照片。");
     }, 8000);
-    md.getUserMedia({ video: { facingMode: facing }, audio: false })
+    // 先用精确约束强制换到目标摄像头；设备没有对应头时降级为理想值
+    md.getUserMedia({ video: { facingMode: { exact: facing } }, audio: false })
+      .catch((e: { name?: string }) => {
+        if (e?.name === "OverconstrainedError" || e?.name === "NotFoundError") {
+          return md.getUserMedia({ video: { facingMode: facing }, audio: false });
+        }
+        throw e;
+      })
       .then((s) => {
         if (cancelled) {
           s.getTracks().forEach((t) => t.stop());
@@ -60,6 +68,11 @@ function CameraPage() {
         stream = s;
         window.clearTimeout(timer);
         setError(null);
+        const devId = s.getVideoTracks()[0]?.getSettings().deviceId;
+        if (lastDeviceId.current && lastDeviceId.current === devId) {
+          toast("这台设备只有一个摄像头，没法翻转");
+        }
+        lastDeviceId.current = devId ?? null;
         if (videoRef.current) {
           videoRef.current.srcObject = s;
           void videoRef.current.play();
@@ -80,7 +93,20 @@ function CameraPage() {
     };
   }, [facing]);
 
-  function flipCamera() {
+  async function flipCamera() {
+    const md = navigator.mediaDevices;
+    if (md?.enumerateDevices) {
+      try {
+        const devices = await md.enumerateDevices();
+        const videoCount = devices.filter((d) => d.kind === "videoinput").length;
+        if (videoCount < 2) {
+          toast("这台设备只有一个摄像头，没法翻转");
+          return;
+        }
+      } catch {
+        // 枚举失败就走正常切换流程
+      }
+    }
     setFacing((f) => (f === "environment" ? "user" : "environment"));
   }
 
