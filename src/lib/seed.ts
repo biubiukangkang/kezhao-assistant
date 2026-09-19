@@ -67,7 +67,7 @@ const DEMOS: Demo[] = [
 
 const MISC: Board[] = [
   { title: "社团招新海报", lines: ["吉他社 · 周五晚", "扫码报名"], bg: "#fdeef2", week: 1, weekday: 7, minutes: 21 * 60 + 40 },
-  { title: "备忘清单", lines: ["鸡排饭 ×2", "杨枝甘露", "取快递"], bg: "#f7f7f2", week: 2, weekday: 6, minutes: 22 * 60 + 30 },
+  { title: "备忘清单", lines: ["鸡排饭 ×2", "杨枝甘露", "取快递"], bg: "#f7f7f2", week: 2, weekday: 5, minutes: 21 * 60 + 30 },
 ];
 
 function drawBoard(title: string, lines: string[], bg: string, accent: string): Promise<Blob> {

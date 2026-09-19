@@ -10,12 +10,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, FolderInput, Star, StickyNote, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderInput, Star, Trash2, X } from "lucide-react";
 import { minToHHmm } from "@/lib/periods";
 import { cn } from "@/lib/utils";
 import type { Course, Photo } from "@/lib/types";
 
-/** 全屏沉浸查看器（iOS 相册范式）：黑底、点图关闭、左右切换、星标、移动改派、备注、删除 */
+/** 全屏沉浸查看器（iOS 相册范式）：黑底、点图关闭、左右切换、星标、移动改派、备忘录备注、删除 */
 export function PhotoViewer({
   photos,
   index,
@@ -41,8 +41,7 @@ export function PhotoViewer({
 }) {
   const photo = photos[index];
   const [moveOpen, setMoveOpen] = useState(false);
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [noteDraft, setNoteDraft] = useState("");
+  const [editingNote, setEditingNote] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -53,6 +52,11 @@ export function PhotoViewer({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [index, photos.length, onClose, onIndexChange]);
+
+  // 切换照片时退出编辑态，避免上一张的编辑框串到下一张
+  useEffect(() => {
+    setEditingNote(false);
+  }, [photo?.id]);
 
   if (!photo) return null;
   const d = new Date(photo.capturedAt);
@@ -111,11 +115,31 @@ export function PhotoViewer({
         )}
       </div>
 
-      {photo.note && (
-        <p className="px-8 pb-1 text-center text-xs leading-5 text-white/85">
-          <StickyNote className="mr-1 inline size-3.5 align-[-2px]" aria-hidden />
-          {photo.note}
-        </p>
+      {/* 备忘录备注：无备注=淡字入口；编辑中/有备注=常驻文本框，失焦自动保存（删光即清除） */}
+      {editingNote || photo.note ? (
+        <textarea
+          key={photo.id}
+          defaultValue={photo.note ?? ""}
+          autoFocus={editingNote}
+          rows={2}
+          maxLength={200}
+          placeholder="写点提醒，比如：这份作业周五交…"
+          aria-label="备注内容"
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== (photo.note ?? "")) onUpdateNote(photo, v);
+            setEditingNote(false);
+          }}
+          className="mx-6 mb-1 w-[calc(100%-3rem)] resize-none rounded-xl bg-white/10 px-3 py-2.5 text-sm leading-5 text-white placeholder:text-white/40 focus:outline-none"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditingNote(true)}
+          className="mb-1 px-6 text-xs text-white/40 transition-colors active:text-white/70"
+        >
+          ＋ 写提醒…
+        </button>
       )}
 
       <div className="flex items-center justify-around pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3">
@@ -178,61 +202,6 @@ export function PhotoViewer({
             </div>
             <AlertDialogFooter>
               <AlertDialogCancel>取消</AlertDialogCancel>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <AlertDialog
-          open={noteOpen}
-          onOpenChange={(o) => {
-            setNoteOpen(o);
-            if (o) setNoteDraft(photo.note ?? "");
-          }}
-        >
-          <AlertDialogTrigger asChild>
-            <button
-              type="button"
-              aria-label={photo.note ? "编辑备注" : "添加备注"}
-              className={cn("rounded-full p-3 active:bg-white/10", photo.note && "text-yellow-400")}
-            >
-              <StickyNote className="size-5" />
-            </button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>给这张照片写点什么</AlertDialogTitle>
-              <AlertDialogDescription>比如：这份作业周五交。会显示在照片下面。</AlertDialogDescription>
-            </AlertDialogHeader>
-            <textarea
-              value={noteDraft}
-              onChange={(e) => setNoteDraft(e.target.value)}
-              rows={3}
-              maxLength={200}
-              placeholder="写点提醒…"
-              className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="备注内容"
-            />
-            <AlertDialogFooter>
-              {photo.note && (
-                <AlertDialogAction
-                  onClick={() => {
-                    onUpdateNote(photo, "");
-                    setNoteOpen(false);
-                  }}
-                  className="mr-auto border border-input bg-transparent text-destructive hover:bg-muted"
-                >
-                  清除备注
-                </AlertDialogAction>
-              )}
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  onUpdateNote(photo, noteDraft.trim());
-                  setNoteOpen(false);
-                }}
-              >
-                保存
-              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

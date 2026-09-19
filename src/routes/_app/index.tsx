@@ -1,10 +1,16 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Camera, ImagePlus, Settings } from "lucide-react";
+import { Camera, ImagePlus, Settings, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { EmptySketch } from "@/components/empty-sketch";
 import { archiveFiles, type BatchResult } from "@/lib/archive";
-import { getSettings, listCourses, listPhotos, listSlots } from "@/lib/db";
+import { getSettings, listCourses, listPhotos, listSlots, savePhoto } from "@/lib/db";
 import { getSemesterWeek, slotsOnDate, weekdayOf } from "@/lib/match";
 import { locateSlotPeriods, minToHHmm, periodLabel } from "@/lib/periods";
 import {
@@ -55,8 +61,14 @@ function HomePage() {
 
   const urls = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of photos.slice(0, 8)) {
-      if (p.blob) m.set(p.id, URL.createObjectURL(p.blob));
+    const batchId = photos[0]?.batchId;
+    const wanted = new Set<string>();
+    for (const p of photos.slice(0, 8)) wanted.add(p.id);
+    if (batchId) for (const p of photos) if (p.batchId === batchId) wanted.add(p.id);
+    for (const p of photos) {
+      if (wanted.has(p.id) && p.blob && !m.has(p.id)) {
+        m.set(p.id, URL.createObjectURL(p.blob));
+      }
     }
     return m;
   }, [photos]);
@@ -73,6 +85,11 @@ function HomePage() {
   const todaySlots = settings ? slotsOnDate(now, slots, settings) : [];
   const courseById = new Map(courses.map((c) => [c.id, c]));
   const nowMin = d.getHours() * 60 + d.getMinutes();
+  // 本次导入结果卡：最新 batch 一组；收起仅对本批生效，新导入自动重新出现
+  const latestBatchId = photos[0]?.batchId;
+  const latestBatch = latestBatchId ? photos.filter((p) => p.batchId === latestBatchId) : [];
+  const [dismissedBatchId, setDismissedBatchId] = useState<string | null>(null);
+  const [reassignPhoto, setReassignPhoto] = useState<Photo | null>(null);
   const periods = settings?.periods ?? [];
   const weeksCovered =
     settings && week !== null
@@ -88,6 +105,20 @@ function HomePage() {
     e.target.value = "";
     if (files.length === 0) return;
     void archiveFiles(files).then(toastBatch);
+  }
+
+  function handleReassign(p: Photo, targetId: string | null) {
+    const target = targetId ? courses.find((c) => c.id === targetId) : null;
+    const next = {
+      ...p,
+      courseId: targetId,
+      matchMethod: (targetId ? "manual" : "unmatched") as Photo["matchMethod"],
+    };
+    void savePhoto(next).then(() => {
+      setPhotos((prev) => prev.map((x) => (x.id === p.id ? next : x)));
+      setReassignPhoto(null);
+      toast.success(target ? `已移到「${target.name}」` : "已移到待分类");
+    });
   }
 
   return (
@@ -108,6 +139,58 @@ function HomePage() {
           <Settings className="size-5" />
         </Link>
       </header>
+
+      {latestBatch.length > 0 && dismissedBatchId !== latestBatchId && (
+        <section className="mt-4 rounded-2xl border bg-card p-4 shadow-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-medium">本次导入 · {latestBatch.length} 张</h2>
+            <button
+              type="button"
+              aria-label="收起"
+              onClick={() => setDismissedBatchId(latestBatchId)}
+              className="rounded-full p-1 text-muted-foreground active:bg-muted"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar">
+            {latestBatch.map((p) => {
+              const c = p.courseId ? courseById.get(p.courseId) : null;
+              return (
+                <div key={p.id} className="w-24 shrink-0">
+                  <Link
+                    to="/course-album/$courseId"
+                    params={{ courseId: p.courseId ?? "pending" }}
+                    className="block active:opacity-75"
+                  >
+                    <div className="aspect-square overflow-hidden rounded-lg bg-muted">
+                      {urls.get(p.id) && (
+                        <img
+                          src={urls.get(p.id)!}
+                          alt=""
+                          loading="lazy"
+                          className="size-full object-cover"
+                        />
+                      )}
+                    </div>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setReassignPhoto(p)}
+                    className="mt-1 flex min-h-6 w-full items-center justify-center gap-1 rounded-full border bg-muted/50 px-1 text-[10px] text-muted-foreground active:bg-muted"
+                  >
+                    <span
+                      className="size-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: c?.color ?? "#94a3b8" }}
+                    />
+                    <span className="truncate">{c?.name ?? "待分类"}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {week !== null && (
         <section className="mt-4 rounded-2xl border bg-card p-4 shadow-sm">
@@ -241,6 +324,38 @@ function HomePage() {
       </div>
 
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
+
+      <Drawer open={!!reassignPhoto} onOpenChange={(o) => !o && setReassignPhoto(null)}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>移动到…</DrawerTitle>
+          </DrawerHeader>
+          <div className="max-h-72 space-y-1 overflow-y-auto px-4 pb-8">
+            {courses.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => reassignPhoto && handleReassign(reassignPhoto, c.id)}
+                className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 active:bg-muted"
+              >
+                <span
+                  className="size-3 shrink-0 rounded-full"
+                  style={{ backgroundColor: c.color }}
+                />
+                <span className="text-sm">{c.name}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => reassignPhoto && handleReassign(reassignPhoto, null)}
+              className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 active:bg-muted"
+            >
+              <span className="size-3 shrink-0 rounded-full bg-amber-400" />
+              <span className="text-sm">待分类</span>
+            </button>
+          </div>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

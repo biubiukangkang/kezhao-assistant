@@ -3,6 +3,7 @@ import { ImagePlus, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { archivePhoto, archiveFiles, type BatchResult } from "@/lib/archive";
+import { uid } from "@/lib/db";
 
 export const Route = createFileRoute("/camera")({
   component: CameraPage,
@@ -34,6 +35,8 @@ function CameraPage() {
   const [shotNote, setShotNote] = useState("");
   const noteTimer = useRef<number | undefined>(undefined);
   const router = useRouter();
+  // 一次打开相机 = 一批，首页「本次导入」按批整组展示
+  const [sessionBatchId] = useState(() => uid());
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -88,7 +91,7 @@ function CameraPage() {
     if (!blob) return;
     setFlash(true);
     window.setTimeout(() => setFlash(false), 180);
-    const r = await archivePhoto(blob, Date.now(), "camera");
+    const r = await archivePhoto(blob, Date.now(), "camera", { batchId: sessionBatchId });
     setLastShot((prev) => {
       if (prev) URL.revokeObjectURL(prev.url);
       return { url: URL.createObjectURL(blob), ok: !!r.courseName };
