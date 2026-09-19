@@ -1,11 +1,18 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, Camera, ImagePlus, Pencil, Star } from "lucide-react";
+import { ArrowLeft, Camera, Check, ImagePlus, Pencil, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { EmptySketch } from "@/components/empty-sketch";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { CourseEditorDialog } from "@/components/course-editor-dialog";
 import { Toaster } from "@/components/ui/sonner";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { addPhotosToCourse, type BatchResult } from "@/lib/archive";
 import { deletePhoto, listCourses, listPhotos, savePhoto } from "@/lib/db";
 import { weekdayOf } from "@/lib/match";
@@ -82,6 +89,10 @@ function AlbumPage() {
   const [viewIdx, setViewIdx] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // 待分类专属：多选批量移动
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [moveOpen, setMoveOpen] = useState(false);
 
   const isPending = courseId === "pending";
 
@@ -190,6 +201,33 @@ function AlbumPage() {
     });
   }
 
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelect() {
+    setSelectMode(false);
+    setSelected(new Set());
+  }
+
+  async function handleBatchMove(targetId: string) {
+    const targets = flatPhotos.filter((p) => selected.has(p.id));
+    if (targets.length === 0) return;
+    const target = allCourses.find((c) => c.id === targetId);
+    for (const p of targets) {
+      await savePhoto({ ...p, courseId: targetId, matchMethod: "manual" });
+    }
+    toast.success(`已把 ${targets.length} 张移到「${target?.name ?? "课程"}」`);
+    setMoveOpen(false);
+    exitSelect();
+    load();
+  }
+
   return (
     <div className="mx-auto min-h-screen max-w-lg">
       <header className="sticky top-0 z-30 mb-3 flex items-center gap-1 border-b bg-background/95 px-2 py-2.5 pt-4 backdrop-blur">
@@ -218,6 +256,18 @@ function AlbumPage() {
         >
           <ImagePlus className="size-5" />
         </button>
+        {isPending && total > 0 && (
+          <button
+            type="button"
+            onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+            className={cn(
+              "min-h-9 rounded-full px-3 text-sm transition-colors active:bg-muted",
+              selectMode ? "bg-primary font-medium text-primary-foreground" : "text-muted-foreground",
+            )}
+          >
+            {selectMode ? "取消" : "选择"}
+          </button>
+        )}
         {!isPending && course && (
           <button
             type="button"
@@ -250,6 +300,42 @@ function AlbumPage() {
               </Link>
             </>
           )}
+        </div>
+      ) : selectMode ? (
+        <div className="grid grid-cols-3 gap-1.5 px-4 pb-32">
+          {flatPhotos.map((p) => {
+            const on = selected.has(p.id);
+            const pd = new Date(p.capturedAt);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => toggleSelect(p.id)}
+                aria-label={`选择 ${pd.getMonth() + 1}月${pd.getDate()}日 ${minToHHmm(pd.getHours() * 60 + pd.getMinutes())} 的照片`}
+                className={cn(
+                  "relative aspect-square overflow-hidden rounded-lg border-2 bg-muted transition-colors",
+                  on ? "border-primary" : "border-transparent",
+                )}
+              >
+                {urls.get(p.id) && (
+                  <img
+                    src={urls.get(p.id)!}
+                    alt=""
+                    loading="lazy"
+                    className="size-full object-cover"
+                  />
+                )}
+                <span
+                  className={cn(
+                    "absolute left-1 top-1 flex size-5 items-center justify-center rounded-full border-2 bg-white/85",
+                    on && "border-primary bg-primary text-primary-foreground",
+                  )}
+                >
+                  {on && <Check className="size-3" />}
+                </span>
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-6 px-4 pb-8">
@@ -326,6 +412,54 @@ function AlbumPage() {
       )}
 
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
+
+      {selectMode && (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
+          <div className="mx-auto flex max-w-lg items-center gap-2 px-4">
+            <button
+              type="button"
+              onClick={() => setSelected(new Set(flatPhotos.map((p) => p.id)))}
+              className="min-h-11 rounded-lg px-3 text-sm text-muted-foreground active:bg-muted"
+            >
+              全选
+            </button>
+            <span className="text-sm text-muted-foreground">已选 {selected.size} 张</span>
+            <button
+              type="button"
+              disabled={selected.size === 0}
+              onClick={() => setMoveOpen(true)}
+              className="ml-auto flex min-h-11 flex-1 items-center justify-center rounded-xl bg-primary font-medium text-primary-foreground transition-colors active:scale-[0.98] disabled:opacity-50"
+            >
+              移动到…（{selected.size}）
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Drawer open={moveOpen} onOpenChange={(o) => !o && setMoveOpen(false)}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>把 {selected.size} 张移到…</DrawerTitle>
+          </DrawerHeader>
+          <div className="max-h-72 space-y-1 overflow-y-auto px-4 pb-8">
+            {allCourses.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => void handleBatchMove(c.id)}
+                className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 active:bg-muted"
+              >
+                <span
+                  className="size-3 shrink-0 rounded-full"
+                  style={{ backgroundColor: c.color }}
+                />
+                <span className="text-sm">{c.name}</span>
+              </button>
+            ))}
+          </div>
+        </DrawerContent>
+      </Drawer>
+
       <Toaster />
     </div>
   );
