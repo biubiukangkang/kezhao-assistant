@@ -56,7 +56,7 @@ function NoteBlock({
           if (v !== (photo.note ?? "")) onSave(photo, v);
           setEditing(false);
         }}
-        className="w-full resize-none rounded-lg bg-muted/40 px-2.5 py-1.5 text-[15px] leading-5 text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+        className="w-full resize-none rounded-lg bg-muted/40 px-2.5 py-1.5 text-[17px] leading-6 text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
       />
     );
   }
@@ -277,14 +277,14 @@ function AlbumPage() {
                         type="button"
                         onClick={() => setViewIdx(flatPhotos.findIndex((x) => x.id === p.id))}
                         aria-label={`放大查看 ${minToHHmm(pd.getHours() * 60 + pd.getMinutes())} 的板书`}
-                        className="mt-2 block w-full overflow-hidden rounded-xl bg-muted active:opacity-90"
+                        className="mx-auto mt-2 block w-fit max-w-full overflow-hidden rounded-xl bg-muted active:opacity-90"
                       >
                         {urls.get(p.id) && (
                           <img
                             src={urls.get(p.id)!}
                             alt=""
                             loading="lazy"
-                            className="w-full object-cover"
+                            className="max-h-72 w-auto max-w-full object-cover"
                           />
                         )}
                       </button>
