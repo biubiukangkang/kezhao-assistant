@@ -1,9 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageShell } from "@/components/page-shell";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import {
+  applyTimetable,
+  parseTimetableText,
+  type ParseResult,
+} from "@/lib/timetable-parse";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,12 +21,18 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { clearAllData, getSettings, saveSettings } from "@/lib/db";
-import { MAX_SEMESTER_WEEKS, getSemesterWeek } from "@/lib/match";
+import { MAX_SEMESTER_WEEKS, getSemesterWeek, weeksLabel } from "@/lib/match";
 import { hhmmToMin, minToHHmm, periodLabel } from "@/lib/periods";
 import { seedDemoData } from "@/lib/seed";
-import type { AppSettings } from "@/lib/types";
+import { WEEKDAY_NAMES, type AppSettings } from "@/lib/types";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -62,6 +73,11 @@ function FoldCard({
 function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [parsed, setParsed] = useState<ParseResult | null>(null);
+  const [droppedFailed, setDroppedFailed] = useState<number[]>([]);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     void getSettings().then(setSettings);
@@ -104,6 +120,37 @@ function SettingsPage() {
     void getSettings().then(setSettings);
   }
 
+  function openPaste() {
+    setPasteText("");
+    setParsed(null);
+    setDroppedFailed([]);
+    setPasteOpen(true);
+  }
+
+  function doParse() {
+    const result = parseTimetableText(pasteText);
+    setParsed(result);
+    setDroppedFailed([]);
+    if (result.ok.length === 0) {
+      toast.error("没解析出任何课程，对照示例检查一下格式");
+    }
+  }
+
+  async function doImport() {
+    if (!parsed) return;
+    setImporting(true);
+    try {
+      const n = await applyTimetable(parsed.ok);
+      toast.success(`已导入 ${parsed.ok.length} 门课 · ${n} 个时段`, {
+        description: "去课表页看看效果",
+      });
+      setPasteOpen(false);
+      void getSettings().then(setSettings);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <PageShell>
     <div className="space-y-4 px-4 pt-6">
@@ -126,6 +173,17 @@ function SettingsPage() {
           <span className="text-sm font-medium">管理课表</span>
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
+        <button
+          type="button"
+          onClick={openPaste}
+          className="-mx-1 flex min-h-10 w-full items-center justify-between rounded-lg px-1 active:bg-muted"
+        >
+          <span className="text-sm font-medium">从课表文本导入</span>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </button>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          把教务系统复制的课表整段粘进来，自动识别课程和周次。
+        </p>
         <div>
           <h3 className="text-xs font-medium text-muted-foreground">学期起始</h3>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -231,6 +289,111 @@ function SettingsPage() {
 
       <p className="pb-2 text-center text-xs text-muted-foreground">课照助手 · v0.1</p>
       </div>
+
+      <Dialog open={pasteOpen} onOpenChange={(o) => !o && setPasteOpen(false)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>从课表文本导入</DialogTitle>
+          </DialogHeader>
+
+          {!parsed ? (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                整段粘贴教务系统的课表，每行一节课。识别「周几、节次、周次、单双周」。
+              </p>
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                rows={8}
+                placeholder={
+                  "高等数学 周一 1-2节 1-16周\n大学英语 周三 3-4节 单周\n数据结构 周五 5-6节 1-3周,5-7周"
+                }
+                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label="课表文本"
+              />
+              <Button onClick={doParse} disabled={pasteText.trim().length === 0} className="w-full">
+                解析预览
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                识别出 {parsed.ok.length} 节课
+                {parsed.failed.length > 0 ? `，${parsed.failed.length} 行无法识别` : ""}：
+              </p>
+              <div className="max-h-64 space-y-1.5 overflow-y-auto">
+                {parsed.ok.map((r, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 rounded-lg border bg-muted/30 px-2.5 py-2 text-xs"
+                  >
+                    <span className="font-medium">{r.name}</span>
+                    <span className="text-muted-foreground">
+                      {WEEKDAY_NAMES[r.weekday - 1]} {periodLabel(r.p0)} 节
+                    </span>
+                    <span className="ml-auto text-muted-foreground">{weeksLabel(r.weeks)}</span>
+                  </div>
+                ))}
+                {parsed.failed.map((line, i) =>
+                  droppedFailed.includes(i) ? null : (
+                    <div
+                      key={`f-${i}`}
+                      className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-2.5 py-2 text-xs"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-destructive/80">{line}</span>
+                      <span className="shrink-0 text-destructive/60">无法识别</span>
+                      <button
+                        type="button"
+                        aria-label="移除该行"
+                        onClick={() => setDroppedFailed((prev) => [...prev, i])}
+                        className="rounded-full p-0.5 text-muted-foreground active:bg-muted"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                  ),
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                确认后会<b>替换现在的整个课表</b>：同名课程的照片归属保留，不再出现的旧课程会被删除
+                （照片回到待分类）。
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setParsed(null);
+                    setDroppedFailed([]);
+                  }}
+                >
+                  重新编辑
+                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button className="flex-1" disabled={parsed.ok.length === 0 || importing}>
+                      {importing ? "导入中…" : "替换现有课表"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>替换现有课表？</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        现在的课表会被清掉，按识别结果重建
+                        {parsed.ok.length} 节课。同名课程的照片归属保留，其余照片回到待分类。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>先不换</AlertDialogCancel>
+                      <AlertDialogAction onClick={doImport}>确认替换</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

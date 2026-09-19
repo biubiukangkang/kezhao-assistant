@@ -12,9 +12,8 @@ export function weeksOf(slot: ScheduleSlot): number[] {
   return out;
 }
 
-/** 周次展示文案：1-16周 / 单周 / 双周 / 1-3,5-7周 */
-export function slotWeekLabel(slot: ScheduleSlot): string {
-  const weeks = weeksOf(slot);
+/** 周次数组的展示文案：1-16周 / 单周 / 双周 / 1-3,5-7周 */
+export function weeksLabel(weeks: number[]): string {
   if (weeks.length === 0) return "无周次";
   const step2 = weeks.length >= 6 && weeks.every((w, i) => i === 0 || w - weeks[i - 1] === 2);
   if (step2 && weeks[0] % 2 === 1) return "单周";
@@ -27,6 +26,11 @@ export function slotWeekLabel(slot: ScheduleSlot): string {
   }
   const body = ranges.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)).join(",");
   return `${body}周`;
+}
+
+/** 周次展示文案：1-16周 / 单周 / 双周 / 1-3,5-7周 */
+export function slotWeekLabel(slot: ScheduleSlot): string {
+  return weeksLabel(weeksOf(slot));
 }
 
 /** 保存前的冲突检测：同星期、时间重叠、周次有交集、不同课程 */
