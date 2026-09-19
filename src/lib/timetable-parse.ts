@@ -5,6 +5,7 @@ import { DEFAULT_PERIODS } from "./periods";
 
 export type ParsedRow = {
   name: string;
+  teacher?: string;
   weekday: number; // 1-7
   p0: number; // 0 起节次索引
   p1: number;
@@ -159,6 +160,7 @@ export async function applyTimetable(rows: ParsedRow[]): Promise<number> {
         id: uid(),
         name,
         color: COURSE_COLORS[ci % COURSE_COLORS.length],
+        teacher: rows.find((r) => r.name === name)?.teacher,
         createdAt: Date.now(),
       };
       await saveCourse(c);

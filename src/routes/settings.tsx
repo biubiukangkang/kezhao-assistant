@@ -2,13 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageShell } from "@/components/page-shell";
 import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   applyTimetable,
   parseTimetableText,
   type ParseResult,
 } from "@/lib/timetable-parse";
+import { parseTimetableWorkbook } from "@/lib/timetable-xls";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -78,6 +79,26 @@ function SettingsPage() {
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [droppedFailed, setDroppedFailed] = useState<number[]>([]);
   const [importing, setImporting] = useState(false);
+  const xlsRef = useRef<HTMLInputElement>(null);
+
+  async function handleXlsFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const slots = parseTimetableWorkbook(buf);
+      if (slots.length === 0) {
+        toast.error("没从这个文件里认出课表，确认是教务系统导出的课表文件");
+        return;
+      }
+      setParsed({ ok: slots, failed: [] });
+      setDroppedFailed([]);
+      setPasteOpen(true);
+    } catch {
+      toast.error("文件读取失败，换一个试试");
+    }
+  }
 
   useEffect(() => {
     void getSettings().then(setSettings);
@@ -173,6 +194,17 @@ function SettingsPage() {
           <span className="text-sm font-medium">管理课表</span>
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
+        <button
+          type="button"
+          onClick={() => xlsRef.current?.click()}
+          className="-mx-1 flex min-h-10 w-full items-center justify-between rounded-lg px-1 active:bg-muted"
+        >
+          <span className="text-sm font-medium">导入课表文件</span>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </button>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          直接选教务系统导出的 .xls / .xlsx 课表文件，自动识别全部课程。
+        </p>
         <button
           type="button"
           onClick={openPaste}
@@ -288,6 +320,14 @@ function SettingsPage() {
       </FoldCard>
 
       <p className="pb-2 text-center text-xs text-muted-foreground">课照助手 · v0.1</p>
+      <input
+        ref={xlsRef}
+        type="file"
+        accept=".xls,.xlsx"
+        hidden
+        onChange={handleXlsFile}
+        aria-label="选择课表文件"
+      />
       </div>
 
       <Dialog open={pasteOpen} onOpenChange={(o) => !o && setPasteOpen(false)}>
