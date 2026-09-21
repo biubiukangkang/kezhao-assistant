@@ -37,7 +37,7 @@ npm run app:release  # 出自签 release APK（android/app/build/outputs/apk/rel
 
 - 构建需要 **JDK 21**（本机在 `C:\Java\jdk-21`）：`JAVA_HOME="C:\Java\jdk-21" npm run app:debug`
 - 签名：`android/keystore.properties` + `android/kezhao-release.keystore`（均已 gitignore，**丢了就无法覆盖升级只能卸载重装**，密码备份在 `~/.kezhao-keystore-pass.txt`）
-- 原生能力：照片经 MediaStore 自动写入公共 `Pictures/课照助手/`（免权限、卸载不清）；备份导出走系统分享面板；网页端行为不变
+- 原生能力（v1.1）：拍照调系统相机（原生画质/对焦/变焦）；照片经 MediaStore 自动写入公共 `Pictures/课照助手/<课程名>/`（免权限、卸载不清，待分类独立子文件夹，旧布局升级自动迁移）；设置页一键打开相册文件夹；备份导出走系统分享面板；网页端行为不变
 - 网页版数据迁移：网页版设置页导出 JSON 备份 → 传入手机 → APP「设置 → 数据 → 从备份恢复」
 
 ## 文档
