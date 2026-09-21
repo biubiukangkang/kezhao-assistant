@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "build": "vite build",
+    "app:sync": "npm run build && cap sync android",
+    "app:debug": "npm run app:sync && cd android && gradlew.bat assembleDebug",
+    "app:release": "npm run app:sync && cd android && gradlew.bat assembleRelease",
     "check": "tsr generate && oxlint src && tsc --noEmit",
     "dev": "vite dev",
     "lint": "oxlint src",
@@ -11,6 +14,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "@hookform/resolvers": "^5.2.2",
     "@qmuse/appwrite-runtime-sdk": "^1.2.0",
     "@radix-ui/react-accordion": "^1.2.12",
