@@ -29,8 +29,9 @@ If import fails and `.qmuse/last-import-error.json` exists, read its structured 
 # 项目约定（课照助手）
 
 - routes 目录保持平铺，不要引入 `_app.tsx` + `_app/` pathless layout；`__root.tsx` 不挂任何全局 provider / Toaster——QMuse 迁移校验会拦截（详见 docs/踩坑日志.md）。
-- Tab 页外壳用 `components/page-shell.tsx`（容器 + BottomNav + Toaster）；全屏页（camera、course-album）不用壳。
+- Tab 页外壳用 `components/page-shell.tsx`（内部滚动容器 + BottomNav + Toaster）；全屏页（camera、course-album）不用壳，但滚动同样走应用内部容器（`h-dvh` + `overflow-y-auto`），禁止回退到 body 滚动 + fixed 导航——线上 iframe 嵌入下滚轮会失效（详见 docs/踩坑日志.md）。
 - 照片一律经 `lib/archive.ts` 入库（压缩到长边 2048 + 去重 + 课表匹配 + 文件夹镜像），不要绕过直接写 db。
+- 删照片一律 `lib/db.ts` 的 `softDeletePhoto`（进回收站，30 天可恢复）；物理 `deletePhoto` 仅限回收站内彻底删除与过期清理，业务路径禁止直调。
 - 读周次用 `match.ts` 的 `weeksOf` / `slotWeekLabel`（兼容旧 weekStart/End+单双周 数据），不要直接读 slot.weekStart。
 - 部署：`npm run build` → `qmuse import .`；平台"发布"动作在 QMuse 网页端。
 - 主文档：docs/技术方案.md（架构与现状）、docs/PRD.md（需求与进度）、docs/踩坑日志.md。

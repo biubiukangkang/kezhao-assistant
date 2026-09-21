@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { EmptySketch } from "@/components/empty-sketch";
 import { PageShell } from "@/components/page-shell";
 import { archiveFiles, type BatchResult } from "@/lib/archive";
-import { getSettings, listCourses, listPhotos, listSlots } from "@/lib/db";
+import { checkBackupReminder } from "@/lib/backup";
+import { getSettings, listCourses, listPhotos, listSlots, purgeExpiredPhotos } from "@/lib/db";
 import { getSemesterWeek, slotWeekLabel, slotsOnDate, weekdayOf } from "@/lib/match";
 import { locateSlotPeriods, minToHHmm, periodLabel } from "@/lib/periods";
 import {
@@ -53,6 +54,16 @@ function HomePage() {
         setPhotos(p);
       },
     );
+    // 惰性清理回收站 + 备份提醒（首页必有 Toaster，toast 能弹出）
+    void purgeExpiredPhotos();
+    void checkBackupReminder().then((added) => {
+      if (added > 0) {
+        toast(`已新增 ${added} 张照片`, {
+          description: "照片只存在本机，建议到「设置 → 导出备份」存一份",
+          duration: 8000,
+        });
+      }
+    });
   }, []);
 
   const urls = useMemo(() => {

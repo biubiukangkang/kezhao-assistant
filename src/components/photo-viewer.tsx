@@ -10,7 +10,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Clock, FolderInput, Star, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, FolderInput, Share2, Star, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
+import { exportPhotos } from "@/lib/photo-export";
 import { minToHHmm } from "@/lib/periods";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -53,6 +55,22 @@ export function PhotoViewer({
   const [editingNote, setEditingNote] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
   const [timeDraft, setTimeDraft] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const r = await exportPhotos([photo]);
+      if (r === "shared") toast.success("已调起系统分享，可选保存到相册");
+      else if (r === "downloaded") toast.success("已开始下载");
+      else toast.error("这张照片的数据是空的");
+    } catch {
+      toast.error("导出失败，重试一次");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -166,6 +184,16 @@ export function PhotoViewer({
           <Star className={cn("size-5", photo.starred && "fill-current")} />
         </button>
 
+        <button
+          type="button"
+          aria-label="保存或分享照片"
+          disabled={exporting}
+          onClick={() => void handleExport()}
+          className="rounded-full p-3 active:bg-white/10 disabled:opacity-50"
+        >
+          <Share2 className="size-5" />
+        </button>
+
         <AlertDialog open={moveOpen} onOpenChange={setMoveOpen}>
           <AlertDialogTrigger asChild>
             <button
@@ -274,7 +302,9 @@ export function PhotoViewer({
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>删除这张照片？</AlertDialogTitle>
-              <AlertDialogDescription>删除后无法恢复。</AlertDialogDescription>
+              <AlertDialogDescription>
+                照片会先进回收站，30 天内可以在「设置 → 回收站」恢复。
+              </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>先不删</AlertDialogCancel>

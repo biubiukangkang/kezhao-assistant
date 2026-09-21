@@ -105,6 +105,24 @@ export async function deleteSlot(id: string): Promise<void> {
 export async function listPhotos(): Promise<Photo[]> {
   const db = await getDB();
   const all = await db.getAll("photos");
+  return all
+    .filter((p) => !p.deletedAt)
+    .sort((a, b) => b.capturedAt - a.capturedAt);
+}
+
+/** 回收站里的照片（新删的在前） */
+export async function listDeletedPhotos(): Promise<Photo[]> {
+  const db = await getDB();
+  const all = await db.getAll("photos");
+  return all
+    .filter((p) => !!p.deletedAt)
+    .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0));
+}
+
+/** 全部照片（含回收站），备份用 */
+export async function listAllPhotos(): Promise<Photo[]> {
+  const db = await getDB();
+  const all = await db.getAll("photos");
   return all.sort((a, b) => b.capturedAt - a.capturedAt);
 }
 
@@ -113,12 +131,52 @@ export async function savePhoto(p: Photo): Promise<void> {
   await db.put("photos", p);
 }
 
+/** 软删除：进回收站，30 天内可恢复 */
+export async function softDeletePhoto(id: string): Promise<void> {
+  const db = await getDB();
+  const p = await db.get("photos", id);
+  if (!p || p.deletedAt) return;
+  await db.put("photos", { ...p, deletedAt: Date.now() });
+}
+
+export async function restorePhoto(id: string): Promise<void> {
+  const db = await getDB();
+  const p = await db.get("photos", id);
+  if (!p) return;
+  const { deletedAt: _dropped, ...rest } = p;
+  await db.put("photos", rest);
+}
+
+/** 彻底删除（回收站内使用或过期清理） */
 export async function deletePhoto(id: string): Promise<void> {
   const db = await getDB();
   await db.delete("photos", id);
 }
 
+export const TRASH_DAYS = 30;
+const TRASH_TTL_MS = TRASH_DAYS * 24 * 60 * 60 * 1000;
+
+/** 惰性清理：彻底删除进回收站超过 30 天的照片。返回清理数量 */
+export async function purgeExpiredPhotos(): Promise<number> {
+  const db = await getDB();
+  const all = await db.getAll("photos");
+  const expired = all.filter((p) => p.deletedAt && Date.now() - p.deletedAt > TRASH_TTL_MS);
+  for (const p of expired) await db.delete("photos", p.id);
+  return expired.length;
+}
+
 // ---------- 数据管理 ----------
+
+/** meta 表通用 KV（提醒阈值、文件夹句柄等本机状态） */
+export async function getMetaValue<T>(key: string): Promise<T | undefined> {
+  const db = await getDB();
+  return (await db.get("meta", key)) as T | undefined;
+}
+
+export async function putMetaValue(key: string, value: unknown): Promise<void> {
+  const db = await getDB();
+  await db.put("meta", value, key);
+}
 
 /** 照片同步文件夹的句柄（FileSystemDirectoryHandle 可结构化克隆存入 IndexedDB） */
 export async function savePhotoFolder(h: FileSystemDirectoryHandle): Promise<void> {

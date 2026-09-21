@@ -1,0 +1,8 @@
+{
+  "backend": "appwrite",
+  "version": "1.0",
+  "projectAlias": "default",
+  "schemaFile": "src/config/.appwrite_schema.json",
+  "authFile": "src/config/.appwrite_auth.json",
+  "clientFile": "src/services/appwrite.ts"
+}

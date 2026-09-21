@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, Camera, Check, ImagePlus, Pencil, Star } from "lucide-react";
+import { ArrowLeft, Camera, Check, Download, ImagePlus, Pencil, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,8 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { addPhotosToCourse, type BatchResult } from "@/lib/archive";
-import { deletePhoto, listCourses, listPhotos, savePhoto } from "@/lib/db";
+import { deletePhoto, listCourses, listPhotos, savePhoto, softDeletePhoto } from "@/lib/db";
+import { exportPhotos } from "@/lib/photo-export";
 import { weekdayOf } from "@/lib/match";
 import { minToHHmm } from "@/lib/periods";
 import { WEEKDAY_NAMES, type Course, type Photo } from "@/lib/types";
@@ -189,11 +190,30 @@ function AlbumPage() {
 
   function handleDelete(p: Photo) {
     const nextIdx = flatPhotos.length > 1 ? Math.min(viewIdx ?? 0, flatPhotos.length - 2) : null;
-    void deletePhoto(p.id).then(() => {
+    void softDeletePhoto(p.id).then(() => {
       setViewIdx(nextIdx);
       load();
-      toast("已删除");
+      toast("已移入回收站", { description: "30 天内可在「设置 → 回收站」恢复" });
     });
+  }
+
+  const [exportingAll, setExportingAll] = useState(false);
+  async function handleExportAll() {
+    if (exportingAll || flatPhotos.length === 0) return;
+    setExportingAll(true);
+    try {
+      const r = await exportPhotos(flatPhotos);
+      if (r === "shared") toast.success(`已调起系统分享（${flatPhotos.length} 张），可选保存到相册`);
+      else if (r === "downloaded")
+        toast.success(`已开始逐张下载 ${flatPhotos.length} 张`, {
+          description: "浏览器若询问是否允许多文件下载，请选允许",
+        });
+      else toast.error("照片数据是空的");
+    } catch {
+      toast.error("导出失败，重试一次");
+    } finally {
+      setExportingAll(false);
+    }
   }
 
   function handleUpdateTime(p: Photo, t: number) {
@@ -247,8 +267,8 @@ function AlbumPage() {
   }
 
   return (
-    <div className="mx-auto min-h-screen max-w-lg">
-      <header className="sticky top-0 z-30 mb-3 flex items-center gap-1 border-b bg-background/95 px-2 py-2.5 pt-4 backdrop-blur">
+    <div className="mx-auto flex h-dvh max-w-lg flex-col">
+      <header className="z-30 mb-3 flex shrink-0 items-center gap-1 border-b bg-background/95 px-2 py-2.5 pt-4 backdrop-blur">
         <button
           type="button"
           aria-label="返回"
@@ -266,6 +286,15 @@ function AlbumPage() {
             {!isPending && course?.teacher ? ` · ${course.teacher}` : ""}
           </p>
         </div>
+        <button
+          type="button"
+          aria-label={exportingAll ? "导出中" : "保存或分享本课程全部照片"}
+          disabled={exportingAll || total === 0}
+          onClick={() => void handleExportAll()}
+          className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted active:bg-muted disabled:opacity-50"
+        >
+          <Download className="size-5" />
+        </button>
         <button
           type="button"
           aria-label="添加照片"
@@ -298,6 +327,7 @@ function AlbumPage() {
         )}
       </header>
 
+      <div className="min-h-0 flex-1 overflow-y-auto">
       {importProgress && (
         <p className="mb-3 px-4 text-xs text-muted-foreground">
           添加中 {importProgress.done}/{importProgress.total}…
@@ -417,6 +447,8 @@ function AlbumPage() {
           )}
         </div>
       )}
+
+      </div>
 
       {viewIdx !== null && flatPhotos.length > 0 && (
         <PhotoViewer

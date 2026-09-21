@@ -1,0 +1,42 @@
+{
+  "databaseId": "qmuse-app-db",
+  "projectAlias": "default",
+  "tables": [
+    {
+      "tableId": "school_portal",
+      "name": "SchoolPortals",
+      "comment": "学校教务系统入口目录：用户选学校后免输教务网址",
+      "columns": [
+        {
+          "key": "name",
+          "type": "string",
+          "size": 64,
+          "comment": "学校名称",
+          "required": true
+        },
+        {
+          "key": "host",
+          "type": "string",
+          "format": "url",
+          "size": 2000,
+          "comment": "教务系统登录页地址",
+          "required": true
+        },
+        {
+          "key": "systemType",
+          "type": "string",
+          "size": 32,
+          "comment": "教务系统类型（zhengfang/qiangzhi/other），应用层识别",
+          "required": false
+        }
+      ],
+      "indexes": [
+        {
+          "key": "idx_name",
+          "type": "key",
+          "attributes": ["name"]
+        }
+      ]
+    }
+  ]
+}

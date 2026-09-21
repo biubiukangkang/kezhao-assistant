@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageShell } from "@/components/page-shell";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight, Trash2, X } from "lucide-react";
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   applyTimetable,
@@ -10,6 +10,7 @@ import {
   type ParseResult,
 } from "@/lib/timetable-parse";
 import { parseTimetableWorkbook } from "@/lib/timetable-xls";
+import { TimetablePreview } from "@/components/timetable-preview";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,11 +30,28 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { clearAllData, getSettings, saveSettings } from "@/lib/db";
-import { MAX_SEMESTER_WEEKS, getSemesterWeek, weeksLabel } from "@/lib/match";
+import {
+  clearAllData,
+  deletePhoto,
+  getSettings,
+  listCourses,
+  listDeletedPhotos,
+  listPhotos,
+  purgeExpiredPhotos,
+  restorePhoto,
+  saveSettings,
+  TRASH_DAYS,
+} from "@/lib/db";
+import { MAX_SEMESTER_WEEKS, getSemesterWeek } from "@/lib/match";
 import { hhmmToMin, minToHHmm, periodLabel } from "@/lib/periods";
 import { seedDemoData } from "@/lib/seed";
-import { exportBackup, importBackup } from "@/lib/backup";
+import {
+  exportBackup,
+  importBackup,
+  inspectBackup,
+  markBackupDone,
+  type BackupPreview,
+} from "@/lib/backup";
 import {
   folderState,
   folderSupported,
@@ -42,7 +60,7 @@ import {
   stopFolderSync,
   syncAllPhotos,
 } from "@/lib/photo-folder";
-import { WEEKDAY_NAMES, type AppSettings } from "@/lib/types";
+import { type AppSettings, type Photo } from "@/lib/types";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -95,9 +113,33 @@ function SettingsPage() {
     name: string | null;
     permission: "granted" | "prompt" | "denied" | null;
   } | null>(null);
+  const [storage, setStorage] = useState<{ photos: number; trashed: number; usageMB: string } | null>(null);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [deleted, setDeleted] = useState<Photo[]>([]);
+  const [restorePreview, setRestorePreview] = useState<{
+    file: File;
+    preview: BackupPreview;
+    current: { courses: number; photos: number };
+  } | null>(null);
   const xlsRef = useRef<HTMLInputElement>(null);
   const restoreRef = useRef<HTMLInputElement>(null);
   const folderOk = folderSupported();
+
+  async function loadStorage() {
+    const [photos, trashed] = await Promise.all([listPhotos(), listDeletedPhotos()]);
+    let usageMB = "";
+    try {
+      const est = await navigator.storage?.estimate?.();
+      if (est?.usage) usageMB = (est.usage / 1024 / 1024).toFixed(1);
+    } catch {
+      /* 部分环境不支持，不显示占用 */
+    }
+    setStorage({ photos: photos.length, trashed: trashed.length, usageMB });
+  }
+
+  async function loadTrash() {
+    setDeleted(await listDeletedPhotos());
+  }
 
   async function handleXlsFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -121,7 +163,19 @@ function SettingsPage() {
   useEffect(() => {
     void getSettings().then(setSettings);
     if (folderOk) void folderState().then(setFolder);
+    void loadStorage();
   }, [folderOk]);
+
+  const trashUrls = useMemo(
+    () => new Map(deleted.filter((p) => p.blob).map((p) => [p.id, URL.createObjectURL(p.blob!)])),
+    [deleted],
+  );
+  useEffect(
+    () => () => {
+      trashUrls.forEach((u) => URL.revokeObjectURL(u));
+    },
+    [trashUrls],
+  );
 
   if (!settings) return null;
 
@@ -186,6 +240,8 @@ function SettingsPage() {
       a.download = filename;
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+      await markBackupDone();
+      void loadStorage();
       toast.success("备份已下载", { description: "文件保存在浏览器下载目录" });
     } catch {
       toast.error("导出失败，重试一次");
@@ -194,20 +250,60 @@ function SettingsPage() {
     }
   }
 
-  async function handleRestore(e: ChangeEvent<HTMLInputElement>) {
+  async function handleRestorePick(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
     setRestoring(true);
     try {
-      const r = await importBackup(file);
+      const preview = await inspectBackup(file);
+      if (!preview.valid) {
+        toast.error(preview.error ?? "不是有效的备份文件");
+        return;
+      }
+      const [courses, photos] = await Promise.all([listCourses(), listPhotos()]);
+      setRestorePreview({
+        file,
+        preview,
+        current: { courses: courses.length, photos: photos.length },
+      });
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  async function confirmRestore() {
+    if (!restorePreview) return;
+    setRestoring(true);
+    try {
+      const r = await importBackup(restorePreview.file);
       toast.success(`已恢复 ${r.courses} 门课 · ${r.photos} 张照片`);
+      setRestorePreview(null);
       void getSettings().then(setSettings);
+      void loadStorage();
     } catch {
       toast.error("恢复失败，确认选择的是本应用导出的备份文件");
     } finally {
       setRestoring(false);
     }
+  }
+
+  async function handleRestorePhoto(id: string) {
+    await restorePhoto(id);
+    await loadTrash();
+    await loadStorage();
+  }
+
+  async function handlePurgePhoto(id: string) {
+    await deletePhoto(id);
+    await loadTrash();
+    await loadStorage();
+  }
+
+  async function handleEmptyTrash() {
+    for (const p of deleted) await deletePhoto(p.id);
+    await loadTrash();
+    await loadStorage();
   }
 
   async function refreshFolder() {
@@ -482,6 +578,11 @@ function SettingsPage() {
         )}
 
         <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            {storage
+              ? `本应用现有照片 ${storage.photos} 张${storage.trashed > 0 ? `（回收站 ${storage.trashed} 张）` : ""}${storage.usageMB ? ` · 约占 ${storage.usageMB} MB` : ""}`
+              : "正在统计照片…"}
+          </p>
           <Button
             variant="outline"
             className="min-h-11 w-full"
@@ -496,18 +597,28 @@ function SettingsPage() {
             disabled={restoring}
             onClick={() => restoreRef.current?.click()}
           >
-            {restoring ? "恢复中…" : "从备份恢复"}
+            {restoring ? "读取备份中…" : "从备份恢复"}
           </Button>
           <input
             ref={restoreRef}
             type="file"
             accept=".json,application/json"
             hidden
-            onChange={handleRestore}
+            onChange={handleRestorePick}
             aria-label="选择备份文件"
           />
+          <Button
+            variant="outline"
+            className="min-h-11 w-full"
+            onClick={() => {
+              void loadTrash();
+              setTrashOpen(true);
+            }}
+          >
+            回收站{storage && storage.trashed > 0 ? `（${storage.trashed}）` : ""}
+          </Button>
           <p className="text-center text-xs text-muted-foreground">
-            数据只在本机浏览器里，换设备或清缓存前请先导出备份。
+            照片和课表都保存在本应用内（本机浏览器），不会上传；手机上清理浏览器数据或卸载浏览器会一并清掉，请定期导出备份。
           </p>
         </div>
 
@@ -553,10 +664,6 @@ function SettingsPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
-        <p className="text-center text-xs text-muted-foreground">
-          所有数据只保存在本机浏览器里，不会上传。
-        </p>
       </FoldCard>
 
       <p className="pb-2 text-center text-xs text-muted-foreground">课照助手 · v0.1</p>
@@ -597,79 +704,150 @@ function SettingsPage() {
               </Button>
             </div>
           ) : (
+            <TimetablePreview
+              parsed={parsed}
+              droppedFailed={droppedFailed}
+              onDropFailed={(i) => setDroppedFailed((prev) => [...prev, i])}
+              onBack={() => {
+                setParsed(null);
+                setDroppedFailed([]);
+              }}
+              importing={importing}
+              onImport={doImport}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={trashOpen} onOpenChange={(o) => !o && setTrashOpen(false)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>回收站</DialogTitle>
+          </DialogHeader>
+          {deleted.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">回收站是空的</p>
+          ) : (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                识别出 {parsed.ok.length} 节课
-                {parsed.failed.length > 0 ? `，${parsed.failed.length} 行无法识别` : ""}：
+                删除的照片在这里保留 {TRASH_DAYS} 天，到期自动清掉。
               </p>
-              <div className="max-h-64 space-y-1.5 overflow-y-auto">
-                {parsed.ok.map((r, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 rounded-lg border bg-muted/30 px-2.5 py-2 text-xs"
-                  >
-                    <span className="font-medium">{r.name}</span>
-                    <span className="text-muted-foreground">
-                      {WEEKDAY_NAMES[r.weekday - 1]} {periodLabel(r.p0)} 节
-                    </span>
-                    <span className="ml-auto text-muted-foreground">{weeksLabel(r.weeks)}</span>
-                  </div>
-                ))}
-                {parsed.failed.map((line, i) =>
-                  droppedFailed.includes(i) ? null : (
-                    <div
-                      key={`f-${i}`}
-                      className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-2.5 py-2 text-xs"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-destructive/80">{line}</span>
-                      <span className="shrink-0 text-destructive/60">无法识别</span>
-                      <button
-                        type="button"
-                        aria-label="移除该行"
-                        onClick={() => setDroppedFailed((prev) => [...prev, i])}
-                        className="rounded-full p-0.5 text-muted-foreground active:bg-muted"
+              <div className="grid grid-cols-3 gap-2">
+                {deleted.map((p) => {
+                  const daysLeft = Math.max(
+                    0,
+                    Math.ceil(TRASH_DAYS - (Date.now() - (p.deletedAt ?? 0)) / 86400000),
+                  );
+                  const d = new Date(p.capturedAt);
+                  return (
+                    <div key={p.id} className="space-y-1">
+                      <div
+                        className="relative aspect-square overflow-hidden rounded-lg border bg-muted"
+                        title={`${d.getMonth() + 1}月${d.getDate()}日`}
                       >
-                        <X className="size-3.5" />
-                      </button>
+                        {trashUrls.get(p.id) && (
+                          <img
+                            src={trashUrls.get(p.id)}
+                            alt="回收站照片"
+                            className="size-full object-cover"
+                          />
+                        )}
+                        <span className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[10px] leading-4 text-white">
+                          剩 {daysLeft} 天
+                        </span>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => void handleRestorePhoto(p.id)}
+                          className="min-h-7 flex-1 rounded-md border text-xs active:bg-muted"
+                        >
+                          恢复
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="彻底删除"
+                          onClick={() => void handlePurgePhoto(p.id)}
+                          className="min-h-7 rounded-md border px-2 text-xs text-destructive active:bg-muted"
+                        >
+                          彻底删
+                        </button>
+                      </div>
                     </div>
-                  ),
-                )}
+                  );
+                })}
               </div>
-              <p className="text-xs text-muted-foreground">
-                确认后会<b>替换现在的整个课表</b>：同名课程的照片归属保留，不再出现的旧课程会被删除
-                （照片回到待分类）。
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="min-h-10 w-full text-destructive hover:text-destructive"
+                  >
+                    清空回收站
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>清空回收站？</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      这 {deleted.length} 张照片会被彻底删除，无法恢复。
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>先不删</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => void handleEmptyTrash()}>
+                      彻底删除
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!restorePreview} onOpenChange={(o) => !o && setRestorePreview(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认恢复这份备份？</DialogTitle>
+          </DialogHeader>
+          {restorePreview && (
+            <div className="space-y-3">
+              <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-xs">
+                <p>
+                  备份导出于{" "}
+                  {new Date(restorePreview.preview.exportedAt).toLocaleString("zh-CN", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}
+                </p>
+                <p>
+                  包含 {restorePreview.preview.courses} 门课 ·{" "}
+                  {restorePreview.preview.slots} 个时段 · {restorePreview.preview.photos} 张照片
+                  （星标 {restorePreview.preview.starred} 张）· 约 {restorePreview.preview.sizeMB} MB
+                </p>
+                <p className="text-muted-foreground">
+                  当前应用里有 {restorePreview.current.courses} 门课 ·{" "}
+                  {restorePreview.current.photos} 张照片
+                </p>
+              </div>
+              <p className="text-xs text-destructive">
+                恢复会覆盖当前的全部课表、课程和照片，无法撤销。
               </p>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => {
-                    setParsed(null);
-                    setDroppedFailed([]);
-                  }}
+                  onClick={() => setRestorePreview(null)}
                 >
-                  重新编辑
+                  先不恢复
                 </Button>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button className="flex-1" disabled={parsed.ok.length === 0 || importing}>
-                      {importing ? "导入中…" : "替换现有课表"}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>替换现有课表？</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        现在的课表会被清掉，按识别结果重建
-                        {parsed.ok.length} 节课。同名课程的照片归属保留，其余照片回到待分类。
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>先不换</AlertDialogCancel>
-                      <AlertDialogAction onClick={doImport}>确认替换</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                <Button
+                  className="flex-1"
+                  disabled={restoring}
+                  onClick={() => void confirmRestore()}
+                >
+                  {restoring ? "恢复中…" : "确认覆盖恢复"}
+                </Button>
               </div>
             </div>
           )}

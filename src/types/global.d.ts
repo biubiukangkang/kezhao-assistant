@@ -4,6 +4,12 @@ interface Window {
     appVersionId: string;
     domain: string;
     env: string;
+    appwrite?: {
+      endpoint: string;
+      projectId: string;
+      databaseId: string;
+      storageBucketId?: string;
+    };
   };
   __TERN__: {
     user?: {
