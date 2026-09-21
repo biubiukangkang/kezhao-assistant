@@ -62,7 +62,8 @@ export function PhotoViewer({
     setExporting(true);
     try {
       const r = await exportPhotos([photo]);
-      if (r === "shared") toast.success("已调起系统分享，可选保存到相册");
+      if (r === "saved") toast.success("已存入系统相册「课照助手」");
+      else if (r === "shared") toast.success("已调起系统分享，可选保存到相册");
       else if (r === "downloaded") toast.success("已开始下载");
       else toast.error("这张照片的数据是空的");
     } catch {

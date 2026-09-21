@@ -60,6 +60,7 @@ import {
   stopFolderSync,
   syncAllPhotos,
 } from "@/lib/photo-folder";
+import { isNativeApp, shareBackupFile } from "@/lib/native";
 import { type AppSettings, type Photo } from "@/lib/types";
 
 export const Route = createFileRoute("/settings")({
@@ -123,6 +124,7 @@ function SettingsPage() {
   } | null>(null);
   const xlsRef = useRef<HTMLInputElement>(null);
   const restoreRef = useRef<HTMLInputElement>(null);
+  const nativeApp = isNativeApp();
   const folderOk = folderSupported();
 
   async function loadStorage() {
@@ -234,15 +236,22 @@ function SettingsPage() {
     setExporting(true);
     try {
       const { blob, filename } = await exportBackup();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
-      await markBackupDone();
-      void loadStorage();
-      toast.success("备份已下载", { description: "文件保存在浏览器下载目录" });
+      if (nativeApp) {
+        await shareBackupFile(blob, filename);
+        await markBackupDone();
+        void loadStorage();
+        toast.success("备份已生成", { description: "已调起系统分享，可保存到文件或发送" });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+        await markBackupDone();
+        void loadStorage();
+        toast.success("备份已下载", { description: "文件保存在浏览器下载目录" });
+      }
     } catch {
       toast.error("导出失败，重试一次");
     } finally {
@@ -343,7 +352,7 @@ function SettingsPage() {
 
   async function handleStopSync() {
     await stopFolderSync();
-    toast("已停止文件夹同步");
+    toast(nativeApp ? "已停止自动存入相册" : "已停止文件夹同步");
     await refreshFolder();
   }
 
@@ -354,7 +363,7 @@ function SettingsPage() {
       if (ok + fail === 0) toast("没有需要同步的照片");
       else
         toast.success(`已同步 ${ok} 张${fail > 0 ? `，失败 ${fail} 张` : ""}`, {
-          description: "打开你选的文件夹就能看到",
+          description: nativeApp ? "在系统相册「课照助手」里可见" : "打开你选的文件夹就能看到",
         });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "同步失败");
@@ -517,22 +526,32 @@ function SettingsPage() {
             {!folder || folder.name === null ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  照片目前存在本应用内。想让照片以文件形式放进你选的文件夹？选一次文件夹，
-                  之后每张照片都会自动放进去。
+                  {nativeApp
+                    ? "照片目前存在本应用内。开启后每张照片会自动存进系统相册「课照助手」，文件管理器里也能看到。"
+                    : "照片目前存在本应用内。想让照片以文件形式放进你选的文件夹？选一次文件夹，之后每张照片都会自动放进去。"}
                 </p>
                 <Button
                   variant="outline"
                   className="min-h-11 w-full"
                   onClick={handlePickFolder}
                 >
-                  选择照片文件夹
+                  {nativeApp ? "开启自动存入相册" : "选择照片文件夹"}
                 </Button>
               </>
             ) : folder.permission === "granted" ? (
               <>
                 <p className="text-xs">
-                  <span className="font-medium text-green-600">照片存到「{folder.name}」</span>
-                  <span className="text-muted-foreground">，新照片自动放进去</span>
+                  {nativeApp ? (
+                    <>
+                      <span className="font-medium text-green-600">照片自动存入系统相册「{folder.name}」</span>
+                      <span className="text-muted-foreground">，新照片拍完即存</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium text-green-600">照片存到「{folder.name}」</span>
+                      <span className="text-muted-foreground">，新照片自动放进去</span>
+                    </>
+                  )}
                 </p>
                 <div className="flex gap-2">
                   <Button
@@ -618,7 +637,9 @@ function SettingsPage() {
             回收站{storage && storage.trashed > 0 ? `（${storage.trashed}）` : ""}
           </Button>
           <p className="text-center text-xs text-muted-foreground">
-            照片和课表都保存在本应用内（本机浏览器），不会上传；手机上清理浏览器数据或卸载浏览器会一并清掉，请定期导出备份。
+            {nativeApp
+              ? "照片和课表都保存在本应用内，不会上传；卸载应用会清掉应用内数据（系统相册里的照片不受影响），请定期导出备份。"
+              : "照片和课表都保存在本应用内（本机浏览器），不会上传；手机上清理浏览器数据或卸载浏览器会一并清掉，请定期导出备份。"}
           </p>
         </div>
 

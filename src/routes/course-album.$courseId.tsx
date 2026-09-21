@@ -203,7 +203,8 @@ function AlbumPage() {
     setExportingAll(true);
     try {
       const r = await exportPhotos(flatPhotos);
-      if (r === "shared") toast.success(`已调起系统分享（${flatPhotos.length} 张），可选保存到相册`);
+      if (r === "saved") toast.success(`已存入系统相册 ${flatPhotos.length} 张`, { description: "系统相册「课照助手」里可见" });
+      else if (r === "shared") toast.success(`已调起系统分享（${flatPhotos.length} 张），可选保存到相册`);
       else if (r === "downloaded")
         toast.success(`已开始逐张下载 ${flatPhotos.length} 张`, {
           description: "浏览器若询问是否允许多文件下载，请选允许",
