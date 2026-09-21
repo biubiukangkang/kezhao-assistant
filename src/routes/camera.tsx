@@ -1,9 +1,10 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { ImagePlus, SwitchCamera, X } from "lucide-react";
+import { Camera as CameraIcon, ImagePlus, SwitchCamera, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
-import { archivePhoto, archiveFiles, type BatchResult } from "@/lib/archive";
+import { archivePhoto, archiveFiles, readCaptureTime, type BatchResult } from "@/lib/archive";
+import { isNativeApp, takePhotoWithSystemCamera } from "@/lib/native";
 import { uid } from "@/lib/db";
 
 export const Route = createFileRoute("/camera")({
@@ -25,8 +26,140 @@ function toastBatch(r: BatchResult) {
   else toast("导入完成", { description: text });
 }
 
-/** 全屏相机：拍完自动归档，缩略图角标反馈（不打断取景），toast 只留给异常 */
+/** 拍照页：原生调系统相机（原生画质/对焦/变焦），网页端保留应用内取景 */
 function CameraPage() {
+  if (isNativeApp()) return <NativeCameraPage />;
+  return <WebCameraPage />;
+}
+
+/** 原生拍照：每张拍完回应用自动归档，同一次进入页面算一批 */
+function NativeCameraPage() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastShot, setLastShot] = useState<{ url: string; ok: boolean } | null>(null);
+  const [shotCount, setShotCount] = useState(0);
+  const [shotNote, setShotNote] = useState("");
+  const noteTimer = useRef<number | undefined>(undefined);
+  const router = useRouter();
+  // 一次进入拍照页 = 一批，首页「本次导入」按批整组展示
+  const [sessionBatchId] = useState(() => uid());
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(noteTimer.current);
+      setLastShot((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return prev;
+      });
+    },
+    [],
+  );
+
+  function feedback(r: { courseId: string | null; courseName: string | null; duplicate: boolean }, blob: Blob) {
+    if (r.duplicate) {
+      setShotNote("这张已经存过了，跳过");
+    } else {
+      setLastShot((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return { url: URL.createObjectURL(blob), ok: !!r.courseName };
+      });
+      setShotCount((c) => c + 1);
+      setShotNote(r.courseName ? `已归入「${r.courseName}」` : "没认出课，已存待分类");
+    }
+    window.clearTimeout(noteTimer.current);
+    noteTimer.current = window.setTimeout(() => setShotNote(""), 2600);
+  }
+
+  async function shoot() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const file = await takePhotoWithSystemCamera();
+      if (!file) return; // 用户取消
+      setShotNote("归档中…");
+      const { t, source } = await readCaptureTime(file);
+      const r = await archivePhoto(file, t, source, {
+        sourceKey: `${file.size}-${t}`,
+        batchId: sessionBatchId,
+      });
+      feedback(r, file);
+    } catch {
+      setError("相机出了点问题，再试一次；也可以先从相册选照片。");
+      toast.error("拍照失败，重试一次");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onFiles(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    setShotNote(`解析中 0/${files.length}…`);
+    void archiveFiles(files, (done, total) => setShotNote(`解析中 ${done}/${total}…`)).then(
+      (r) => {
+        toastBatch(r);
+        setShotNote("");
+      },
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
+      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-10 text-center">
+        {error ? (
+          <p className="text-sm leading-6 text-white/80">{error}</p>
+        ) : (
+          <>
+            <p className="text-sm leading-6 text-white/80">
+              点下方按钮调用系统相机拍摄
+              <br />
+              拍完自动归档，连拍就多点几次
+            </p>
+            {shotNote && <p className="text-xs text-white/85">{shotNote}</p>}
+          </>
+        )}
+        <button
+          type="button"
+          aria-label="拍照"
+          disabled={busy}
+          onClick={() => void shoot()}
+          className="size-24 rounded-full border-4 border-white bg-white/25 transition-transform active:scale-95 disabled:opacity-50"
+        >
+          <CameraIcon className="mx-auto size-9" />
+        </button>
+        {lastShot && (
+          <div className="relative size-16 overflow-hidden rounded-lg">
+            <img src={lastShot.url} alt="" className="size-full object-cover" />
+            <span
+              className={`absolute right-0.5 top-0.5 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4 text-white ${lastShot.ok ? "bg-green-500" : "bg-white/40"}`}
+            >
+              {shotCount}
+            </span>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="flex min-h-12 items-center gap-2 rounded-xl bg-white/15 px-6 text-sm font-medium"
+        >
+          <ImagePlus className="size-4" />
+          从相册选照片
+        </button>
+        <button type="button" onClick={() => router.history.back()} className="min-h-11 px-4 text-sm text-white/60">
+          先不弄了
+        </button>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
+      <Toaster />
+    </div>
+  );
+}
+
+/** 全屏相机（网页端）：拍完自动归档，缩略图角标反馈（不打断取景），toast 只留给异常 */
+function WebCameraPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);

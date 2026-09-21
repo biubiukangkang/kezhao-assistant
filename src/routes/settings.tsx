@@ -60,7 +60,7 @@ import {
   stopFolderSync,
   syncAllPhotos,
 } from "@/lib/photo-folder";
-import { isNativeApp, shareBackupFile } from "@/lib/native";
+import { isNativeApp, openGalleryFolder, migrateAlbumStructure, albumStructureUpToDate, shareBackupFile } from "@/lib/native";
 import { type AppSettings, type Photo } from "@/lib/types";
 
 export const Route = createFileRoute("/settings")({
@@ -168,6 +168,21 @@ function SettingsPage() {
     void loadStorage();
   }, [folderOk]);
 
+  // 旧版相册是平铺布局：升级后首次进入设置页，自动把镜像重排成科目子文件夹（主库重写，幂等）
+  useEffect(() => {
+    if (!nativeApp) return;
+    void (async () => {
+      if (await albumStructureUpToDate()) return;
+      const r = await migrateAlbumStructure();
+      if (r.ok > 0) {
+        toast.success(`相册已按科目重新归档 ${r.ok} 张${r.fail > 0 ? `，失败 ${r.fail} 张` : ""}`, {
+          description: "系统相册「课照助手」下按课程分文件夹",
+        });
+        void folderState().then(setFolder);
+      }
+    })();
+  }, [nativeApp]);
+
   const trashUrls = useMemo(
     () => new Map(deleted.filter((p) => p.blob).map((p) => [p.id, URL.createObjectURL(p.blob!)])),
     [deleted],
@@ -230,6 +245,14 @@ function SettingsPage() {
   async function handleClear() {
     await clearAllData();
     void getSettings().then(setSettings);
+  }
+
+  async function handleOpenFolder() {
+    try {
+      await openGalleryFolder();
+    } catch {
+      toast.error("打不开文件管理器", { description: "可手动前往 文件管理器 → Pictures/课照助手 查看" });
+    }
   }
 
   async function handleExport() {
@@ -570,6 +593,15 @@ function SettingsPage() {
                     停止
                   </Button>
                 </div>
+                {nativeApp && (
+                  <Button
+                    variant="outline"
+                    className="min-h-11 w-full"
+                    onClick={handleOpenFolder}
+                  >
+                    打开相册文件夹
+                  </Button>
+                )}
               </>
             ) : (
               <>

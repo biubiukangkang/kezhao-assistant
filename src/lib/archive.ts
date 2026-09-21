@@ -31,7 +31,7 @@ async function compressImage(blob: Blob, maxEdge = 2048): Promise<Blob> {
 }
 
 /** 读照片真实拍摄时间：EXIF（DateTimeOriginal/CreateDate）优先，读不到回退文件修改时间 */
-async function readCaptureTime(f: File): Promise<{ t: number; source: CaptureSource }> {
+export async function readCaptureTime(f: File): Promise<{ t: number; source: CaptureSource }> {
   try {
     const exif = await exifr.parse(f);
     const d = exif?.DateTimeOriginal ?? exif?.CreateDate;

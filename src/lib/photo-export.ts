@@ -1,4 +1,5 @@
-// 照片出口：原生 APP 直接写系统相册「课照助手」；网页手机端走 Web Share（系统"保存到相册/分享"面板），桌面端逐张下载兜底
+// 照片出口：原生 APP 直接写系统相册「课照助手/<课程名>」；网页手机端走 Web Share（系统"保存到相册/分享"面板），桌面端逐张下载兜底
+import { listCourses } from "./db";
 import { isNativeApp, savePhotoToGallery } from "./native";
 import { fileNameFor } from "./photo-folder";
 import type { Photo } from "./types";
@@ -32,9 +33,16 @@ export async function exportPhotos(
   if (withBlob.length === 0) return "empty";
 
   if (isNativeApp()) {
+    const courses = await listCourses();
+    const byId = new Map(courses.map((c) => [c.id, c.name]));
     let done = 0;
     for (const p of withBlob) {
-      await savePhotoToGallery(p.blob!, fileNameFor(p).replace(/\.jpg$/, ""));
+      const courseName = p.courseId ? byId.get(p.courseId) ?? null : null;
+      await savePhotoToGallery(
+        p.blob!,
+        fileNameFor(p, courseName ?? undefined).replace(/\.jpg$/, ""),
+        courseName,
+      );
       done += 1;
       onProgress?.(done, withBlob.length);
     }

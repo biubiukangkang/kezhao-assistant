@@ -107,8 +107,8 @@ export async function mirrorPhotoIfEnabled(p: Photo): Promise<void> {
     if (isNativeApp()) {
       if (!p.blob || !(await galleryAutoSaveEnabled())) return;
       const courses = await listCourses();
-      const courseName = p.courseId ? courses.find((c) => c.id === p.courseId)?.name : undefined;
-      await savePhotoToGallery(p.blob, fileNameFor(p, courseName).replace(/\.jpg$/, ""));
+      const courseName = p.courseId ? courses.find((c) => c.id === p.courseId)?.name : null;
+      await savePhotoToGallery(p.blob, fileNameFor(p, courseName ?? undefined).replace(/\.jpg$/, ""), courseName);
       return;
     }
     const handle = await getPhotoFolder();
@@ -132,10 +132,12 @@ export async function syncAllPhotos(): Promise<{ ok: number; fail: number }> {
   if (isNativeApp()) {
     for (const p of photos) {
       if (!p.blob) continue;
+      const courseName = courseById.get(p.courseId ?? "")?.name ?? null;
       try {
         await savePhotoToGallery(
           p.blob,
-          fileNameFor(p, courseById.get(p.courseId ?? "")?.name).replace(/\.jpg$/, ""),
+          fileNameFor(p, courseName ?? undefined).replace(/\.jpg$/, ""),
+          courseName,
         );
         ok += 1;
       } catch {
