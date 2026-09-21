@@ -25,6 +25,21 @@ npm run build      # 生产构建
 
 部署到 QMuse：`npm run build` 后执行 `qmuse import .`；平台上的"发布"动作在 QMuse 网页端完成。
 
+## 安卓 APP（Capacitor，个人自用线）
+
+参赛网页版已冻结；同一份代码可构建安卓 APP（`android/` 工程，包名 `cn.kezhao.assistant`）：
+
+```bash
+npm run app:sync     # web 构建 + 同步进安卓工程
+npm run app:debug    # 出 debug APK
+npm run app:release  # 出自签 release APK（android/app/build/outputs/apk/release/）
+```
+
+- 构建需要 **JDK 21**（本机在 `C:\Java\jdk-21`）：`JAVA_HOME="C:\Java\jdk-21" npm run app:debug`
+- 签名：`android/keystore.properties` + `android/kezhao-release.keystore`（均已 gitignore，**丢了就无法覆盖升级只能卸载重装**，密码备份在 `~/.kezhao-keystore-pass.txt`）
+- 原生能力：照片经 MediaStore 自动写入公共 `Pictures/课照助手/`（免权限、卸载不清）；备份导出走系统分享面板；网页端行为不变
+- 网页版数据迁移：网页版设置页导出 JSON 备份 → 传入手机 → APP「设置 → 数据 → 从备份恢复」
+
 ## 文档
 
 - [docs/PRD.md](docs/PRD.md) — 产品需求与设计规范（含「不反人性」负面清单）

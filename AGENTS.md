@@ -34,4 +34,5 @@ If import fails and `.qmuse/last-import-error.json` exists, read its structured 
 - 删照片一律 `lib/db.ts` 的 `softDeletePhoto`（进回收站，30 天可恢复）；物理 `deletePhoto` 仅限回收站内彻底删除与过期清理，业务路径禁止直调。
 - 读周次用 `match.ts` 的 `weeksOf` / `slotWeekLabel`（兼容旧 weekStart/End+单双周 数据），不要直接读 slot.weekStart。
 - 部署：`npm run build` → `qmuse import .`；平台"发布"动作在 QMuse 网页端。
+- 安卓 APP 线：`npm run app:debug / app:release`（需 `JAVA_HOME=C:\Java\jdk-21`）；**android 下 .java 源文件一律 ASCII-only**（中文用 `\uXXXX`，javac GBK 坑见踩坑日志）；原生平台分支一律经 `lib/native.ts` 的 `isNativeApp()`，不要在业务代码里直接 import Capacitor 插件；`android/keystore.properties` 与 `*.keystore` 不入库。
 - 主文档：docs/技术方案.md（架构与现状）、docs/PRD.md（需求与进度）、docs/踩坑日志.md。
