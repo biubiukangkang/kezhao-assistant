@@ -4,11 +4,18 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { EmptySketch } from "@/components/empty-sketch";
 import { PageShell } from "@/components/page-shell";
+import { UpdateDialog } from "@/components/update-dialog";
 import { archiveFiles, type BatchResult } from "@/lib/archive";
 import { checkBackupReminder } from "@/lib/backup";
 import { getSettings, listCourses, listPhotos, listSlots, purgeExpiredPhotos } from "@/lib/db";
-import { getSemesterWeek, slotWeekLabel, slotsOnDate, weekdayOf } from "@/lib/match";
+import {
+  getSemesterWeek,
+  slotWeekLabel,
+  slotsOnDate,
+  weekdayOf,
+} from "@/lib/match";
 import { locateSlotPeriods, minToHHmm, periodLabel } from "@/lib/periods";
+import { checkUpdate, type UpdateInfo } from "@/lib/updater";
 import {
   WEEKDAY_NAMES,
   type AppSettings,
@@ -43,9 +50,10 @@ function HomePage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const load = () => {
     void Promise.all([getSettings(), listSlots(), listCourses(), listPhotos()]).then(
       ([s, sl, c, p]) => {
         setSettings(s);
@@ -54,6 +62,9 @@ function HomePage() {
         setPhotos(p);
       },
     );
+  };
+  useEffect(() => {
+    load();
     // 惰性清理回收站 + 备份提醒（首页必有 Toaster，toast 能弹出）
     void purgeExpiredPhotos();
     void checkBackupReminder().then((added) => {
@@ -64,12 +75,24 @@ function HomePage() {
         });
       }
     });
+    // 启动静默检查更新（原生 APP；失败静默）
+    void checkUpdate().then((u) => {
+      if (u) setUpdate(u);
+    });
+    // App 从后台恢复时重算"今天/第几周"——挂后台过夜后回来不能还显示昨天的课
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const urls = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of photos.slice(0, 8)) {
-      if (p.blob) m.set(p.id, URL.createObjectURL(p.blob));
+      const src = (p.thumb ?? p.blob) as Blob | undefined;
+      if (src) m.set(p.id, URL.createObjectURL(src));
     }
     return m;
   }, [photos]);
@@ -132,6 +155,21 @@ function HomePage() {
         </Link>
       </header>
 
+      {settings && !settings.semesterStart && (
+        <section className="mt-4 rounded-2xl border border-amber-300/70 bg-amber-50 p-4 text-amber-900 shadow-sm dark:border-amber-500/40 dark:bg-amber-950/60 dark:text-amber-200">
+          <p className="text-sm font-medium">还差一步：设置学期起始日</p>
+          <p className="mt-1 text-xs leading-5">
+            它是照片对上课表的基准。不设置的话，拍的每张照都会进待分类，自动归档开不了。
+          </p>
+          <Link
+            to="/settings"
+            className="mt-2.5 inline-flex min-h-9 items-center rounded-lg bg-amber-600 px-4 text-sm font-medium text-white active:scale-[0.98]"
+          >
+            去设置（30 秒）
+          </Link>
+        </section>
+      )}
+
       {week !== null && (
         <section className="mt-4 rounded-2xl border bg-card p-4 shadow-sm">
           <div className="mb-1 flex items-center justify-between">
@@ -163,7 +201,7 @@ function HomePage() {
                       </div>
                     </div>
                     {isNow && (
-                      <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                      <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/60 dark:text-green-300">
                         正在上
                       </span>
                     )}
@@ -268,6 +306,7 @@ function HomePage() {
 
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
       </div>
+      <UpdateDialog update={update} onClose={() => setUpdate(null)} />
     </PageShell>
   );
 }

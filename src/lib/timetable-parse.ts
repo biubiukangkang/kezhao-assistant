@@ -1,7 +1,6 @@
 import { uid } from "./db";
 import { deleteCourse, deleteSlot, listCourses, listSlots, saveCourse, saveSlot } from "./db";
-import { COURSE_COLORS, type ScheduleSlot } from "./types";
-import { DEFAULT_PERIODS } from "./periods";
+import { COURSE_COLORS, type Period, type ScheduleSlot } from "./types";
 
 export type ParsedRow = {
   name: string;
@@ -108,8 +107,8 @@ function guessName(rest: string): string {
   return parts.reduce((a, b) => (b.length > a.length ? b : a));
 }
 
-/** 解析整段课表文本（每行一节课）；解析失败的行进 failed */
-export function parseTimetableText(text: string): ParseResult {
+/** 解析整段课表文本（每行一节课）；periods 为用户设置的节次表（决定大节数量与时间）；解析失败的行进 failed */
+export function parseTimetableText(text: string, periods: Period[]): ParseResult {
   const ok: ParsedRow[] = [];
   const failed: string[] = [];
   for (const rawLine of text.split(/\n+/)) {
@@ -121,9 +120,9 @@ export function parseTimetableText(text: string): ParseResult {
     }
 
     const { weeks, rest: r1 } = extractWeeks(raw);
-    const periods = extractPeriods(r1, DEFAULT_PERIODS.length);
-    const wd = extractWeekday(periods ? periods.rest : r1);
-    if (!periods || !wd) {
+    const periodsParsed = extractPeriods(r1, periods.length);
+    const wd = extractWeekday(periodsParsed ? periodsParsed.rest : r1);
+    if (!periodsParsed || !wd) {
       failed.push(raw);
       continue;
     }
@@ -132,8 +131,8 @@ export function parseTimetableText(text: string): ParseResult {
       failed.push(raw);
       continue;
     }
-    const p0 = Math.max(0, Math.min(periods.p0, DEFAULT_PERIODS.length - 1));
-    const p1 = Math.max(p0, Math.min(periods.p1, DEFAULT_PERIODS.length - 1));
+    const p0 = Math.max(0, Math.min(periodsParsed.p0, periods.length - 1));
+    const p1 = Math.max(p0, Math.min(periodsParsed.p1, periods.length - 1));
     ok.push({
       name,
       weekday: wd.weekday,
@@ -146,8 +145,8 @@ export function parseTimetableText(text: string): ParseResult {
   return { ok, failed };
 }
 
-/** 用解析结果替换现有课表：同名课程保留（照片归属不动），不再出现的旧课程删除（照片回待分类） */
-export async function applyTimetable(rows: ParsedRow[]): Promise<number> {
+/** 用解析结果替换现有课表（periods 为用户设置的节次表，时段分钟数按它换算）：同名课程保留（照片归属不动），不再出现的旧课程删除（照片回待分类） */
+export async function applyTimetable(rows: ParsedRow[], periods: Period[]): Promise<number> {
   const names = new Set(rows.map((r) => r.name));
   for (const c of await listCourses()) {
     if (!names.has(c.name)) await deleteCourse(c.id);
@@ -177,8 +176,8 @@ export async function applyTimetable(rows: ParsedRow[]): Promise<number> {
       id: uid(),
       courseId: course.id,
       weekday: r.weekday,
-      startMin: DEFAULT_PERIODS[r.p0].startMin,
-      endMin: DEFAULT_PERIODS[r.p1].endMin,
+      startMin: periods[r.p0].startMin,
+      endMin: periods[r.p1].endMin,
       weeks: r.weeks,
       weekStart: r.weeks[0] ?? 1,
       weekEnd: r.weeks[r.weeks.length - 1] ?? 16,

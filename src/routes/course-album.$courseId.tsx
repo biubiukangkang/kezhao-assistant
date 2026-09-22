@@ -1,6 +1,6 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, Camera, Check, Download, ImagePlus, Pencil, Star } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { ArrowLeft, Camera, Check, Download, ImagePlus, Pencil, RefreshCw, Star } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { EmptySketch } from "@/components/empty-sketch";
@@ -13,10 +13,10 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { addPhotosToCourse, type BatchResult } from "@/lib/archive";
-import { deletePhoto, listCourses, listPhotos, savePhoto, softDeletePhoto } from "@/lib/db";
+import { addPhotosToCourse, makeThumb, rematchPhotos, type BatchResult } from "@/lib/archive";
+import { deletePhoto, getSettings, listCourses, listPhotos, listSlots, savePhoto, savePhotos, softDeletePhoto } from "@/lib/db";
 import { exportPhotos } from "@/lib/photo-export";
-import { weekdayOf } from "@/lib/match";
+import { matchPhoto, weekdayOf } from "@/lib/match";
 import { minToHHmm } from "@/lib/periods";
 import { WEEKDAY_NAMES, type Course, type Photo } from "@/lib/types";
 
@@ -125,6 +125,7 @@ function AlbumPage() {
       }
       setGroups(list);
       setVisibleGroups(3);
+      backfillThumbs(list.flatMap((g) => g.photos));
     });
   };
   useEffect(() => {
@@ -133,18 +134,31 @@ function AlbumPage() {
   }, [courseId]);
 
   const flatPhotos = useMemo(() => groups.flatMap((g) => g.photos), [groups]);
-  const urls = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of flatPhotos) {
-      if (p.blob) m.set(p.id, URL.createObjectURL(p.blob));
-    }
-    return m;
-  }, [flatPhotos]);
+
+  // objectURL 按 id + 图像身份缓存：星标/备注/缩略图回填等局部更新不重建全表 URL，列表图片不再整页闪烁。
+  // 列表（缩略图优先）与查看器（原图）各用独立缓存，避免互相顶掉对方的 URL
+  const thumbCache = useRef(new Map<string, { url: string; src: Blob }>());
+  const fullCache = useRef(new Map<string, { url: string; src: Blob }>());
+  const cachedUrl = (cache: React.RefObject<Map<string, { url: string; src: Blob }>>, p: Photo, src: Blob | undefined): string | undefined => {
+    if (!src) return undefined;
+    const hit = cache.current.get(p.id);
+    if (hit && hit.src === src) return hit.url;
+    if (hit) URL.revokeObjectURL(hit.url);
+    const url = URL.createObjectURL(src);
+    cache.current.set(p.id, { url, src });
+    return url;
+  };
+  const urlFor = useCallback(
+    (p: Photo) => cachedUrl(thumbCache, p, (p.thumb ?? p.blob) as Blob | undefined),
+    [],
+  );
+  const urlForFull = useCallback((p: Photo) => cachedUrl(fullCache, p, p.blob), []);
   useEffect(
     () => () => {
-      for (const u of urls.values()) URL.revokeObjectURL(u);
+      for (const { url } of thumbCache.current.values()) URL.revokeObjectURL(url);
+      for (const { url } of fullCache.current.values()) URL.revokeObjectURL(url);
     },
-    [urls],
+    [],
   );
 
   const total = flatPhotos.length;
@@ -157,6 +171,35 @@ function AlbumPage() {
         photos: g.photos.map((x) => (x.id === p.id ? p : x)),
       })),
     );
+  }
+
+  // 旧数据没有缩略图的分批后台回填（每批 4 张、批间让出主线程），完成后列表自动切到小图
+  const backfilling = useRef(false);
+  function backfillThumbs(list: Photo[]) {
+    if (backfilling.current) return;
+    const need = list.filter((p) => p.blob && !p.thumb);
+    if (need.length === 0) return;
+    backfilling.current = true;
+    void (async () => {
+      try {
+        const BATCH = 4;
+        for (let i = 0; i < need.length; i += BATCH) {
+          const batch = need.slice(i, i + BATCH);
+          const updated: Photo[] = [];
+          for (const p of batch) {
+            const thumb = await makeThumb(p.blob!);
+            if (thumb) updated.push({ ...p, thumb });
+          }
+          if (updated.length > 0) {
+            await savePhotos(updated);
+            for (const u of updated) patchLocal(u);
+          }
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      } finally {
+        backfilling.current = false;
+      }
+    })();
   }
 
   function handleToggleStar(p: Photo) {
@@ -218,11 +261,42 @@ function AlbumPage() {
   }
 
   function handleUpdateTime(p: Photo, t: number) {
-    void savePhoto({ ...p, capturedAt: t, capturedSource: "manual" }).then(() => {
-      setViewIdx(flatPhotos.findIndex((x) => x.id === p.id));
+    // 改拍摄时间的动机就是"时间不准归错了课"：按新时间真正重新匹配课表，兑现文案承诺
+    void (async () => {
+      const [settings, slots] = await Promise.all([getSettings(), listSlots()]);
+      const slot = matchPhoto(t, slots, settings);
+      await savePhoto({
+        ...p,
+        capturedAt: t,
+        capturedSource: "manual",
+        courseId: slot?.courseId ?? null,
+        matchMethod: slot ? "auto" : "unmatched",
+      });
+      setViewIdx(null);
       load();
-      toast.success("时间已更新，照片按新时间重新归类");
-    });
+      toast.success("时间已更新", {
+        description: slot ? "已按新时间重新归档" : "新时间没匹配到课，已移入待分类",
+      });
+    })();
+  }
+
+  // 待分类页一键补救：课表录晚了 / 学期锚点改对了之后，全库自动照片按当前课表重算
+  const [rematching, setRematching] = useState(false);
+  async function handleRematch() {
+    setRematching(true);
+    try {
+      const r = await rematchPhotos();
+      if (r.moved > 0) {
+        toast.success(`重新归档 ${r.moved} 张`, { description: "手动指定过的照片没有动" });
+        load();
+      } else {
+        toast("没有需要调整的照片", {
+          description: "当前课表下自动归档的照片都已就位",
+        });
+      }
+    } finally {
+      setRematching(false);
+    }
   }
 
   function onFiles(e: ChangeEvent<HTMLInputElement>) {
@@ -269,7 +343,7 @@ function AlbumPage() {
 
   return (
     <div className="mx-auto flex h-dvh max-w-lg flex-col">
-      <header className="z-30 mb-3 flex shrink-0 items-center gap-1 border-b bg-background/95 px-2 py-2.5 pt-4 backdrop-blur">
+      <header className="z-30 mb-3 flex shrink-0 items-center gap-1 border-b bg-background/95 px-2 py-2.5 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
         <button
           type="button"
           aria-label="返回"
@@ -304,6 +378,17 @@ function AlbumPage() {
         >
           <ImagePlus className="size-5" />
         </button>
+        {isPending && (
+          <button
+            type="button"
+            disabled={rematching}
+            onClick={() => void handleRematch()}
+            className="flex min-h-9 items-center gap-1 rounded-full px-2.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw className={`size-3.5 ${rematching ? "animate-spin" : ""}`} />
+            {rematching ? "匹配中" : "重新匹配"}
+          </button>
+        )}
         {isPending && total > 0 && (
           <button
             type="button"
@@ -372,9 +457,9 @@ function AlbumPage() {
                   on ? "border-primary" : "border-transparent",
                 )}
               >
-                {urls.get(p.id) && (
+                {urlFor(p) && (
                   <img
-                    src={urls.get(p.id)!}
+                    src={urlFor(p)!}
                     alt=""
                     loading="lazy"
                     className="size-full object-cover"
@@ -408,7 +493,7 @@ function AlbumPage() {
                       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
                         <span>{minToHHmm(pd.getHours() * 60 + pd.getMinutes())}</span>
                         {p.starred && (
-                          <span className="flex items-center gap-0.5 font-medium text-yellow-600">
+                          <span className="flex items-center gap-0.5 font-medium text-yellow-600 dark:text-yellow-400">
                             <Star className="size-3 fill-current" aria-hidden />
                             重点
                           </span>
@@ -421,14 +506,14 @@ function AlbumPage() {
                         aria-label={`放大查看 ${minToHHmm(pd.getHours() * 60 + pd.getMinutes())} 的板书`}
                         className="mx-auto mt-2 block w-fit max-w-full overflow-hidden rounded-xl bg-muted active:opacity-90"
                       >
-                        {urls.get(p.id) && (
-                          <img
-                            src={urls.get(p.id)!}
-                            alt=""
-                            loading="lazy"
-                            className="max-h-72 w-auto max-w-full object-cover"
-                          />
-                        )}
+                    {urlFor(p) && (
+                      <img
+                        src={urlFor(p)!}
+                        alt=""
+                        loading="lazy"
+                        className="max-h-72 w-auto max-w-full object-cover"
+                      />
+                    )}
                       </button>
                     </div>
                   );
@@ -455,7 +540,7 @@ function AlbumPage() {
         <PhotoViewer
           photos={flatPhotos}
           index={Math.min(viewIdx, flatPhotos.length - 1)}
-          urls={urls}
+          urlFor={urlForFull}
           courses={allCourses}
           onIndexChange={setViewIdx}
           onClose={() => setViewIdx(null)}

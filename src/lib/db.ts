@@ -8,7 +8,7 @@ interface KezhaoDB extends DBSchema {
   photos: {
     key: string;
     value: Photo;
-    indexes: { "by-course": string; "by-batch": string };
+    indexes: { "by-course": string; "by-batch": string; "by-source": string };
   };
   meta: { key: string; value: unknown };
 }
@@ -19,15 +19,21 @@ const SETTINGS_KEY = "settings";
 let dbPromise: Promise<IDBPDatabase<KezhaoDB>> | null = null;
 
 function getDB() {
-  dbPromise ??= openDB<KezhaoDB>(DB_NAME, 1, {
-    upgrade(db) {
-      db.createObjectStore("courses", { keyPath: "id" });
-      const slots = db.createObjectStore("slots", { keyPath: "id" });
-      slots.createIndex("by-course", "courseId");
-      const photos = db.createObjectStore("photos", { keyPath: "id" });
-      photos.createIndex("by-course", "courseId");
-      photos.createIndex("by-batch", "batchId");
-      db.createObjectStore("meta");
+  dbPromise ??= openDB<KezhaoDB>(DB_NAME, 2, {
+    upgrade(db, oldVersion, _newVersion, tx) {
+      if (oldVersion < 1) {
+        db.createObjectStore("courses", { keyPath: "id" });
+        const slots = db.createObjectStore("slots", { keyPath: "id" });
+        slots.createIndex("by-course", "courseId");
+        const photos = db.createObjectStore("photos", { keyPath: "id" });
+        photos.createIndex("by-course", "courseId");
+        photos.createIndex("by-batch", "batchId");
+        db.createObjectStore("meta");
+      }
+      if (oldVersion < 2) {
+        // v2：sourceKey 索引，入库查重从全表扫描变索引查询
+        tx.objectStore("photos").createIndex("by-source", "sourceKey");
+      }
     },
   });
   return dbPromise;
@@ -131,6 +137,21 @@ export async function savePhoto(p: Photo): Promise<void> {
   await db.put("photos", p);
 }
 
+/** 批量写照片（单事务），重匹配/缩略图回填用 */
+export async function savePhotos(list: Photo[]): Promise<void> {
+  if (list.length === 0) return;
+  const db = await getDB();
+  const tx = db.transaction("photos", "readwrite");
+  for (const p of list) tx.objectStore("photos").put(p);
+  await tx.done;
+}
+
+/** 去重键是否已存在（v2 by-source 索引，O(log n)） */
+export async function hasSourceKey(key: string): Promise<boolean> {
+  const db = await getDB();
+  return (await db.countFromIndex("photos", "by-source", key)) > 0;
+}
+
 /** 软删除：进回收站，30 天内可恢复 */
 export async function softDeletePhoto(id: string): Promise<void> {
   const db = await getDB();
@@ -159,9 +180,11 @@ const TRASH_TTL_MS = TRASH_DAYS * 24 * 60 * 60 * 1000;
 /** 惰性清理：彻底删除进回收站超过 30 天的照片。返回清理数量 */
 export async function purgeExpiredPhotos(): Promise<number> {
   const db = await getDB();
-  const all = await db.getAll("photos");
+  const tx = db.transaction("photos", "readwrite");
+  const all = await tx.store.getAll();
   const expired = all.filter((p) => p.deletedAt && Date.now() - p.deletedAt > TRASH_TTL_MS);
-  for (const p of expired) await db.delete("photos", p.id);
+  for (const p of expired) tx.store.delete(p.id);
+  await tx.done;
   return expired.length;
 }
 
@@ -201,5 +224,28 @@ export async function clearAllData(): Promise<void> {
   tx.objectStore("slots").clear();
   tx.objectStore("photos").clear();
   tx.objectStore("meta").clear();
+  await tx.done;
+}
+
+/**
+ * 备份恢复专用：单事务原子替换课程/时段/照片 + 覆盖 settings。
+ * 不清 meta 其余键（文件夹句柄、相册开关等本机状态跨恢复保留），
+ * 任何一条写入失败整个事务回滚，不会出现"旧的已删新的没写完"。
+ */
+export async function replaceAllData(
+  settings: AppSettings,
+  courses: Course[],
+  slots: ScheduleSlot[],
+  photos: Photo[],
+): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(["courses", "slots", "photos", "meta"], "readwrite");
+  tx.objectStore("courses").clear();
+  tx.objectStore("slots").clear();
+  tx.objectStore("photos").clear();
+  tx.objectStore("meta").put(settings, SETTINGS_KEY);
+  for (const c of courses) tx.objectStore("courses").put(c);
+  for (const s of slots) tx.objectStore("slots").put(s);
+  for (const p of photos) tx.objectStore("photos").put(p);
   await tx.done;
 }

@@ -28,7 +28,7 @@ function toLocalInput(t: number): string {
 export function PhotoViewer({
   photos,
   index,
-  urls,
+  urlFor,
   courses,
   onIndexChange,
   onClose,
@@ -40,7 +40,7 @@ export function PhotoViewer({
 }: {
   photos: Photo[];
   index: number;
-  urls: Map<string, string>;
+  urlFor: (p: Photo) => string | undefined;
   courses: Course[];
   onIndexChange: (i: number) => void;
   onClose: () => void;
@@ -93,7 +93,7 @@ export function PhotoViewer({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
-      <div className="flex items-center justify-between px-3 pt-4">
+      <div className="flex items-center justify-between px-3 pt-[max(1rem,env(safe-area-inset-top))]">
         <button
           type="button"
           onClick={onClose}
@@ -110,9 +110,9 @@ export function PhotoViewer({
       </div>
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center" onClick={onClose}>
-        {urls.get(photo.id) && (
+        {urlFor(photo) && (
           <img
-            src={urls.get(photo.id)!}
+            src={urlFor(photo)!}
             alt="板书照片"
             className="max-h-full max-w-full object-contain"
           />

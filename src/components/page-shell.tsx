@@ -9,7 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
  */
 export function PageShell({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto flex h-dvh max-w-lg flex-col bg-background">
+    <div className="mx-auto flex h-dvh max-w-lg flex-col bg-background pt-[env(safe-area-inset-top)]">
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       <BottomNav />
       <Toaster />

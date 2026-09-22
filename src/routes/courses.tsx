@@ -74,7 +74,8 @@ function CoursesPage() {
     const m = new Map<string, string>();
     for (const arr of previewByCourse.values()) {
       for (const p of arr) {
-        if (p.blob) m.set(p.id, URL.createObjectURL(p.blob));
+        const src = (p.thumb ?? p.blob) as Blob | undefined;
+        if (src) m.set(p.id, URL.createObjectURL(src));
       }
     }
     return m;

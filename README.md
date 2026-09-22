@@ -1,51 +1,59 @@
-# 课照助手
+# 课照助手（Kezhao Assistant）
 
-大学生拍完板书/PPT，照片按课表时间自动归档到对应课程相册——拍完什么都不用管，复习时一搜一个准。
+> 拍完板书不用管：打开即已按课程、按日期归档好的课堂照片助手
 
-支付宝「智能体涌现大赛」参赛作品，基于 QMuse 平台构建。
+<!-- TODO: 放一张主界面截图/GIF -->
 
-**线上地址**：https://qmuse.cn/app/2147940046996490
+大学生拍板书/PPT，一学期几百张混在相册里，考前找不到。课照助手把「照片拍摄时间」和「课表」对齐——拍完自动归入对应课程，复习时来课程库找，整整齐齐。安卓 APP（Capacitor），本地优先，照片不上传。
 
-## 功能一览
+另有参赛网页版（QMuse 平台构建）：https://qmuse.cn/app/2147940046996490
 
-- 拍照即归档：全屏相机（前后摄翻转、连拍同批），按拍摄时间自动匹配课表归入课程
-- 课表：超级课程表式周视图；周次任意勾选组合；支持教务系统导出的 .xls/.xlsx 文件与文本粘贴导入
-- 课程库：搜索、缩略图预览、长按课程卡管理（编辑/删除）、待分类显式入口与多选批量移动
-- 相册：QQ 空间式动态流（备注醒目在上、图在下）、沉浸查看器（星标/移动/改时间/删除）
-- 数据：照片压缩入库、文件夹镜像（Chromium）、照片出口（查看器/批量「保存或分享」到手机相册）、回收站（删除保留 30 天可恢复）、备份提醒 + 恢复前覆盖预览、JSON 整包备份/恢复、一键演示数据
+## ✨ 功能特性
 
-## 本地开发
+- **拍照即归档**：调系统相机拍摄，按拍摄时间 × 课表自动识别课程，第一张确认后连拍免打扰；课间/课前拍摄有专门的方向判定
+- **课表引擎**：周视图管理（任意周次组合/单双周/冲突提醒）；教务 .xls/.xlsx 导入、文本粘贴导入、**AI 识别导入**（课表截图丢进去，格式不挑）
+- **QQ 空间式课程相册**：日期分组动态流、备注提醒、星标重点板书、沉浸查看器、待分类批量改派
+- **数据主权**：IndexedDB 本地优先；系统相册按课程子文件夹自动镜像（免权限）；流式 JSON 整包备份/原子恢复；回收站 30 天可恢复；照片批量导出/分享
+- **应用内更新**：GitHub Release 检查更新，覆盖安装数据全保留
+- 适配深色模式、刘海安全区；锁定字体缩放，系统大字体不破版
+
+## 🛠 技术栈
+
+`React 19` · `Vite 7` · `TanStack Router` · `Tailwind 4` · `IndexedDB (idb)` · `exifr` · `Capacitor 8`（安卓壳 + 原生 MediaStore/相机/HTTP 插件）
+
+架构与设计决策见 [docs/技术方案.md](docs/技术方案.md)，需求演进见 [docs/PRD.md](docs/PRD.md)，踩坑记录见 [docs/踩坑日志.md](docs/踩坑日志.md)。
+
+## 🚀 快速开始
+
+### 安卓 APP（推荐）
+
+从 [Releases](https://github.com/biubiukangkang/kezhao-assistant/releases) 下载最新 APK 安装即可；后续在应用内「设置 → 检查更新」或启动时自动提醒，**覆盖安装数据全保留**。
+
+### 从源码构建
 
 ```bash
-npm install        # 推荐 cnpm install
-npm run check      # tsr generate + oxlint + tsc
-npm run dev        # http://localhost:5173
-npm run build      # 生产构建
+git clone https://github.com/biubiukangkang/kezhao-assistant.git
+cd kezhao-assistant
+npm install                 # 国内网络可加 --registry=https://registry.npmmirror.com
+cp .env.example .env.local  # 填入 AI 接口（可选，仅 AI 课表导入需要）
+npm run dev                 # 网页版开发（http://127.0.0.1:5173）
+npm run check && npm run build
 ```
 
-部署到 QMuse：`npm run build` 后执行 `qmuse import .`；平台上的"发布"动作在 QMuse 网页端完成。
-
-## 安卓 APP（Capacitor，个人自用线）
-
-参赛网页版已冻结；同一份代码可构建安卓 APP（`android/` 工程，包名 `cn.kezhao.assistant`）：
+安卓 APK（需 JDK 21 + Android SDK）：
 
 ```bash
-npm run app:sync     # web 构建 + 同步进安卓工程
-npm run app:debug    # 出 debug APK
-npm run app:release  # 出自签 release APK（android/app/build/outputs/apk/release/）
+npm run app:debug    # debug APK
+npm run app:release  # 自签 release APK + version.json（android/app/build/outputs/apk/release/）
 ```
 
-- 构建需要 **JDK 21**（本机在 `C:\Java\jdk-21`）：`JAVA_HOME="C:\Java\jdk-21" npm run app:debug`
-- 签名：`android/keystore.properties` + `android/kezhao-release.keystore`（均已 gitignore，**丢了就无法覆盖升级只能卸载重装**，密码备份在 `~/.kezhao-keystore-pass.txt`）
-- 原生能力（v1.1）：拍照调系统相机（原生画质/对焦/变焦）；照片经 MediaStore 自动写入公共 `Pictures/课照助手/<课程名>/`（免权限、卸载不清，待分类独立子文件夹，旧布局升级自动迁移）；设置页一键打开相册文件夹；备份导出走系统分享面板；网页端行为不变
-- 网页版数据迁移：网页版设置页导出 JSON 备份 → 传入手机 → APP「设置 → 数据 → 从备份恢复」
+- 签名文件 `android/keystore.properties` 与 `*.keystore` 不入库；自行构建请生成自己的签名（**签名丢失将无法覆盖升级**）
+- AI 课表识别走任意 OpenAI 兼容视觉模型（`.env.local` 三个变量，见 `.env.example`），密钥只存在你本机构建产物里，仓库不含任何密钥
 
-## 文档
+## 🤝 贡献约定
 
-- [docs/PRD.md](docs/PRD.md) — 产品需求与设计规范（含「不反人性」负面清单）
-- [docs/技术方案.md](docs/技术方案.md) — 架构、数据模型、匹配算法、平台约束（**改代码前先读**）
-- [docs/踩坑日志.md](docs/踩坑日志.md) — QMuse 校验拦截、Windows/Vite、浏览器自动化踩坑
+改代码前读 `AGENTS.md`（项目约定）与 `docs/技术方案.md`：路由保持平铺、根布局不挂全局组件、照片一律经 `lib/archive.ts` 入库、安卓 `.java` 源文件 ASCII-only。
 
-## 约定
+## 📄 许可证
 
-改代码前读 `AGENTS.md`（项目约定）与 `docs/技术方案.md`。路由保持平铺、根布局不挂全局组件、照片一律经 `lib/archive.ts` 入库。
+MIT

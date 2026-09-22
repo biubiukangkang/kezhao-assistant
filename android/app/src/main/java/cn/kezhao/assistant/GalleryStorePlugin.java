@@ -101,7 +101,11 @@ public class GalleryStorePlugin extends Plugin {
         }
     }
 
-    /** Opens the system Files app located at the album folder (external storage root). */
+    /**
+     * Opens the photo location. Tries the Files app deep link first; many OEM
+     * ROMs have no handler for it, so falls back to the system gallery (the
+     * user's real goal is "see my photos"). Reports which path was taken.
+     */
     @PluginMethod
     public void openFolder(PluginCall call) {
         String album = call.getString("album", DEFAULT_ALBUM);
@@ -112,9 +116,22 @@ public class GalleryStorePlugin extends Plugin {
             intent.setDataAndType(docUri, DocumentsContract.Document.MIME_TYPE_DIR);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
             getContext().startActivity(intent);
-            call.resolve();
-        } catch (Exception e) {
-            call.reject("openFolder failed: " + e.getMessage());
+            JSObject ret = new JSObject();
+            ret.put("via", "files");
+            call.resolve(ret);
+        } catch (Exception ignored) {
+            try {
+                Intent gallery = new Intent(Intent.ACTION_VIEW,
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                gallery.setType("image/*");
+                gallery.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(gallery);
+                JSObject ret = new JSObject();
+                ret.put("via", "gallery");
+                call.resolve(ret);
+            } catch (Exception e) {
+                call.reject("openFolder failed: " + e.getMessage());
+            }
         }
     }
 

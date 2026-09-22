@@ -1,21 +1,18 @@
 import {
-  clearAllData,
   getMetaValue,
   getSettings,
   listAllPhotos,
   listCourses,
   listSlots,
   putMetaValue,
-  saveCourse,
-  savePhoto,
-  saveSettings,
-  saveSlot,
+  replaceAllData,
 } from "./db";
 import type { AppSettings, Course, Photo, ScheduleSlot } from "./types";
 
 const BACKUP_VERSION = 1;
 
-type BackupPhoto = Omit<Photo, "blob"> & { blobBase64: string | null };
+// thumb 不进备份（体积翻倍无意义），恢复后由相册页回填重新生成
+type BackupPhoto = Omit<Photo, "blob" | "thumb"> & { blobBase64: string | null };
 
 type BackupFile = {
   version: number;
@@ -29,44 +26,69 @@ type BackupFile = {
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = () => {
+      const r = reader.result;
+      if (typeof r !== "string") {
+        reject(new Error("照片读取失败"));
+        return;
+      }
+      resolve(r.slice(r.indexOf(",") + 1));
+    };
     reader.onerror = () => reject(new Error("照片读取失败"));
     reader.readAsDataURL(blob);
   });
 }
 
 async function base64ToBlob(dataUrl: string): Promise<Blob> {
-  const res = await fetch(dataUrl);
+  // 旧版备份存完整 dataURL，新版存纯 base64，两种都兼容
+  const s = dataUrl.includes(",") ? dataUrl : `data:image/jpeg;base64,${dataUrl}`;
+  const res = await fetch(s);
   return res.blob();
 }
 
-/** 导出全部数据（课表/课程/照片内嵌 base64，含回收站）为单个 JSON 文件 */
-export async function exportBackup(): Promise<{ blob: Blob; filename: string }> {
+/**
+ * 流式产出备份 JSON 文本块：头部的课表/课程元信息一块，之后每张照片一块。
+ * 消费方逐块处理（网页端收集进 Blob、原生端逐块追加写缓存文件），
+ * 全程不 Promise.all、不整体 JSON.stringify，内存峰值从 ~4x 降到 ~1.4x。
+ */
+export async function* backupChunks(): AsyncGenerator<string> {
   const [settings, courses, slots, photos] = await Promise.all([
     getSettings(),
     listCourses(),
     listSlots(),
     listAllPhotos(),
   ]);
-  const photosOut: BackupPhoto[] = await Promise.all(
-    photos.map(async ({ blob, ...meta }) => ({
-      ...meta,
-      blobBase64: blob ? await blobToBase64(blob) : null,
-    })),
-  );
-  const data: BackupFile = {
+  const head: Omit<BackupFile, "photos"> = {
     version: BACKUP_VERSION,
     exportedAt: Date.now(),
     settings,
     courses,
     slots,
-    photos: photosOut,
   };
-  const json = JSON.stringify(data);
+  yield `${JSON.stringify(head).slice(0, -1)},"photos":[`;
+  for (let i = 0; i < photos.length; i++) {
+    const { blob, thumb: _thumb, ...meta } = photos[i];
+    const photoJson = JSON.stringify(meta);
+    const b64 = blob ? await blobToBase64(blob) : null;
+    const chunk = b64
+      ? `${i > 0 ? "," : ""}${photoJson.slice(0, -1)},"blobBase64":"${b64}"}`
+      : `${i > 0 ? "," : ""}${photoJson.slice(0, -1)},"blobBase64":null}`;
+    yield chunk;
+  }
+  yield "]}";
+}
+
+export function backupFilename(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
-  const filename = `课照助手备份-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
-  return { blob: new Blob([json], { type: "application/json" }), filename };
+  return `课照助手备份-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+}
+
+/** 导出全部数据（课表/课程/照片内嵌 base64，含回收站）为单个 JSON Blob。网页端下载用 */
+export async function exportBackup(): Promise<{ blob: Blob; filename: string }> {
+  const parts: string[] = [];
+  for await (const chunk of backupChunks()) parts.push(chunk);
+  return { blob: new Blob(parts, { type: "application/json" }), filename: backupFilename() };
 }
 
 export type BackupPreview = {
@@ -111,7 +133,12 @@ export async function inspectBackup(file: File): Promise<BackupPreview> {
   };
 }
 
-/** 从备份文件恢复：覆盖现有全部数据。返回恢复统计 */
+/**
+ * 从备份文件恢复：覆盖课表/课程/照片。
+ * 先把全部记录（含照片 blob）解析构造完，任何一步失败都发生在写库之前；
+ * 最后经 replaceAllData 单事务原子写入——不会出现旧的已删、新的没写完的半残库。
+ * 文件夹句柄、相册开关等本机配置（meta）跨恢复保留。
+ */
 export async function importBackup(
   file: File,
 ): Promise<{ courses: number; slots: number; photos: number }> {
@@ -119,16 +146,16 @@ export async function importBackup(
   if (data.version !== BACKUP_VERSION || !Array.isArray(data.photos)) {
     throw new Error("不是有效的课照助手备份文件");
   }
-  await clearAllData();
-  if (data.settings) await saveSettings(data.settings);
-  for (const c of data.courses ?? []) await saveCourse(c);
-  for (const s of data.slots ?? []) await saveSlot(s);
-  for (const { blobBase64, ...meta } of data.photos ?? []) {
-    await savePhoto({
-      ...meta,
-      blob: blobBase64 ? await base64ToBlob(blobBase64) : undefined,
-    });
+  const photos: Photo[] = [];
+  for (const { blobBase64, ...meta } of data.photos) {
+    photos.push({ ...meta, blob: blobBase64 ? await base64ToBlob(blobBase64) : undefined });
   }
+  await replaceAllData(
+    data.settings ?? (await getSettings()),
+    data.courses ?? [],
+    data.slots ?? [],
+    photos,
+  );
   return {
     courses: data.courses?.length ?? 0,
     slots: data.slots?.length ?? 0,

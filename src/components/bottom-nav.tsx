@@ -19,6 +19,7 @@ export function BottomNav() {
             <Link
               key={to}
               to={to}
+              replace
               className={`flex min-h-16 flex-1 flex-col items-center justify-center gap-1 rounded-xl text-xs transition-colors active:bg-muted/60 ${
                 active ? "text-primary" : "text-muted-foreground"
               }`}

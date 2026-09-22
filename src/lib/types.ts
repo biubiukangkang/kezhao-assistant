@@ -40,6 +40,8 @@ export interface Photo {
   sourceKey?: string;
   /** 用户手动写的提醒，如"这份作业周五交" */
   note?: string;
+  /** 列表缩略图（长边 480），入库时生成；旧数据无此字段时渲染回退 blob */
+  thumb?: Blob;
   /** 删除时间（ms）；存在 = 在回收站中，30 天后清理 */
   deletedAt?: number;
   blob?: Blob;

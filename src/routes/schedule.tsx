@@ -44,6 +44,7 @@ import {
 import {
   findSlotConflicts,
   getSemesterWeek,
+  MAX_SEMESTER_WEEKS,
   slotWeekLabel,
   startOfDay,
   weekdayOf,
@@ -288,9 +289,9 @@ function SlotEditorDialog({
     ["1-16周", Array.from({ length: 16 }, (_, i) => i + 1)],
     ["1-8周", Array.from({ length: 8 }, (_, i) => i + 1)],
     ["9-16周", Array.from({ length: 8 }, (_, i) => i + 9)],
-    ["单周", Array.from({ length: 10 }, (_, i) => i * 2 + 1)],
-    ["双周", Array.from({ length: 10 }, (_, i) => i * 2 + 2)],
-    ["全部", Array.from({ length: 20 }, (_, i) => i + 1)],
+    ["单周", Array.from({ length: 15 }, (_, i) => i * 2 + 1)],
+    ["双周", Array.from({ length: 15 }, (_, i) => i * 2 + 2)],
+    ["全部", Array.from({ length: MAX_SEMESTER_WEEKS }, (_, i) => i + 1)],
   ];
 
   async function handleSave() {
@@ -476,8 +477,8 @@ function SlotEditorDialog({
                 );
               })}
             </div>
-            <div className="grid grid-cols-5 gap-1.5">
-              {Array.from({ length: 20 }, (_, i) => i + 1).map((w) => {
+            <div className="grid grid-cols-6 gap-1.5">
+              {Array.from({ length: MAX_SEMESTER_WEEKS }, (_, i) => i + 1).map((w) => {
                 const on = weeks.includes(w);
                 return (
                   <button
@@ -498,10 +499,10 @@ function SlotEditorDialog({
               })}
             </div>
             {conflicts.length > 0 && (
-              <div className="space-y-0.5 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-700">
+              <div className="space-y-0.5 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
                 {conflicts.map((s) => (
                   <p key={s.id}>
-                    ⚠ 与《{courseById.get(s.courseId)?.name ?? "其他课程"}》
+                    与《{courseById.get(s.courseId)?.name ?? "其他课程"}》
                     {WEEKDAY_NAMES[s.weekday - 1]} {minToHHmm(s.startMin)}–{minToHHmm(s.endMin)}{" "}
                     时间重叠，仍可保存
                   </p>

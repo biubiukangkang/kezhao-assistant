@@ -105,7 +105,8 @@ export function slotsOnDate(
 /**
  * 用照片拍摄时间匹配课表（纯函数）。
  * 先严格匹配（照片时间落在上课时段内）；未中再放宽 ±15 分钟（刚上课/刚下课拍）。
- * 多个命中取开始时间距照片时间最近者；仍未中 → null（待分类）。
+ * 放宽窗口同时命中前后两节课时（课间拍摄），优先归刚下课的那节（取 endMin 最近）——
+ * 下课铃后抢拍板书远比给还没开写的下一节拍照常见；仅当只命中将上课的课时才归它。
  */
 export function matchPhoto(
   t: number,
@@ -122,15 +123,23 @@ export function matchPhoto(
   if (candidates.length === 0) return null;
 
   const strict = candidates.filter((s) => minutes >= s.startMin && minutes <= s.endMin);
-  const pool =
-    strict.length > 0
-      ? strict
-      : candidates.filter(
-          (s) => minutes >= s.startMin - RELAX_MIN && minutes <= s.endMin + RELAX_MIN,
-        );
-  if (pool.length === 0) return null;
+  if (strict.length > 0) {
+    return strict.reduce((best, s) =>
+      Math.abs(minutes - s.startMin) < Math.abs(minutes - best.startMin) ? s : best,
+    );
+  }
+  const relaxed = candidates.filter(
+    (s) => minutes >= s.startMin - RELAX_MIN && minutes <= s.endMin + RELAX_MIN,
+  );
+  if (relaxed.length === 0) return null;
 
-  return pool.reduce((best, s) =>
+  const afterClass = relaxed.filter((s) => minutes > s.endMin);
+  if (afterClass.length > 0) {
+    return afterClass.reduce((best, s) =>
+      minutes - s.endMin < minutes - best.endMin ? s : best,
+    );
+  }
+  return relaxed.reduce((best, s) =>
     Math.abs(minutes - s.startMin) < Math.abs(minutes - best.startMin) ? s : best,
   );
 }

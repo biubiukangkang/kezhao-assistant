@@ -6,7 +6,7 @@
     "build": "vite build",
     "app:sync": "npm run build && cap sync android",
     "app:debug": "npm run app:sync && cd android && gradlew.bat assembleDebug",
-    "app:release": "npm run app:sync && cd android && gradlew.bat assembleRelease",
+    "app:release": "npm run app:sync && cd android && gradlew.bat assembleRelease && cd .. && node scripts/make-version-json.mjs",
     "check": "tsr generate && oxlint src && tsc --noEmit",
     "dev": "vite dev",
     "lint": "oxlint src",
@@ -15,6 +15,8 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
     "@capacitor/camera": "^8.2.4",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",

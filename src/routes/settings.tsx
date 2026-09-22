@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageShell } from "@/components/page-shell";
 import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
@@ -9,8 +9,10 @@ import {
   parseTimetableText,
   type ParseResult,
 } from "@/lib/timetable-parse";
+import { aiParseTimetable } from "@/lib/timetable-ai";
 import { parseTimetableWorkbook } from "@/lib/timetable-xls";
 import { TimetablePreview } from "@/components/timetable-preview";
+import { UpdateDialog } from "@/components/update-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,10 +44,11 @@ import {
   saveSettings,
   TRASH_DAYS,
 } from "@/lib/db";
-import { MAX_SEMESTER_WEEKS, getSemesterWeek } from "@/lib/match";
+import { MAX_SEMESTER_WEEKS, getSemesterWeek, weekdayOf } from "@/lib/match";
 import { hhmmToMin, minToHHmm, periodLabel } from "@/lib/periods";
-import { seedDemoData } from "@/lib/seed";
 import {
+  backupChunks,
+  backupFilename,
   exportBackup,
   importBackup,
   inspectBackup,
@@ -60,7 +63,14 @@ import {
   stopFolderSync,
   syncAllPhotos,
 } from "@/lib/photo-folder";
-import { isNativeApp, openGalleryFolder, migrateAlbumStructure, albumStructureUpToDate, shareBackupFile } from "@/lib/native";
+import {
+  isNativeApp,
+  openGalleryFolder,
+  migrateAlbumStructure,
+  albumStructureUpToDate,
+  shareBackupFile,
+} from "@/lib/native";
+import { checkUpdate, currentVersion, type UpdateInfo } from "@/lib/updater";
 import { type AppSettings, type Photo } from "@/lib/types";
 
 export const Route = createFileRoute("/settings")({
@@ -101,7 +111,6 @@ function FoldCard({
 
 function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [seeding, setSeeding] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [parsed, setParsed] = useState<ParseResult | null>(null);
@@ -122,6 +131,16 @@ function SettingsPage() {
     preview: BackupPreview;
     current: { courses: number; photos: number };
   } | null>(null);
+  // AI 识别导入
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiImages, setAiImages] = useState<File[]>([]);
+  const [aiText, setAiText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const aiFileRef = useRef<HTMLInputElement>(null);
+  // 检查更新
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [checking, setChecking] = useState(false);
   const xlsRef = useRef<HTMLInputElement>(null);
   const restoreRef = useRef<HTMLInputElement>(null);
   const nativeApp = isNativeApp();
@@ -166,7 +185,8 @@ function SettingsPage() {
     void getSettings().then(setSettings);
     if (folderOk) void folderState().then(setFolder);
     void loadStorage();
-  }, [folderOk]);
+    if (nativeApp) void currentVersion().then(setAppVersion);
+  }, [folderOk, nativeApp]);
 
   // 旧版相册是平铺布局：升级后首次进入设置页，自动把镜像重排成科目子文件夹（主库重写，幂等）
   useEffect(() => {
@@ -183,10 +203,14 @@ function SettingsPage() {
     })();
   }, [nativeApp]);
 
-  const trashUrls = useMemo(
-    () => new Map(deleted.filter((p) => p.blob).map((p) => [p.id, URL.createObjectURL(p.blob!)])),
-    [deleted],
-  );
+  const trashUrls = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of deleted) {
+      const src = (p.thumb ?? p.blob) as Blob | undefined;
+      if (src) m.set(p.id, URL.createObjectURL(src));
+    }
+    return m;
+  }, [deleted]);
   useEffect(
     () => () => {
       trashUrls.forEach((u) => URL.revokeObjectURL(u));
@@ -229,27 +253,18 @@ function SettingsPage() {
     persist({ ...settings!, periods: settings!.periods.filter((_, idx) => idx !== i) });
   }
 
-  async function handleSeed() {
-    setSeeding(true);
-    try {
-      const r = await seedDemoData();
-      toast.success(`已填充 ${r.courses} 门课 · ${r.photos} 张照片`, {
-        description: "回首页和课程库看看效果",
-      });
-      void getSettings().then(setSettings);
-    } finally {
-      setSeeding(false);
-    }
-  }
-
   async function handleClear() {
     await clearAllData();
     void getSettings().then(setSettings);
+    void loadStorage();
   }
 
   async function handleOpenFolder() {
     try {
-      await openGalleryFolder();
+      const via = await openGalleryFolder();
+      if (via === "gallery") {
+        toast("已打开系统相册", { description: "在相册里找到「课照助手」文件夹即可" });
+      }
     } catch {
       toast.error("打不开文件管理器", { description: "可手动前往 文件管理器 → Pictures/课照助手 查看" });
     }
@@ -258,13 +273,14 @@ function SettingsPage() {
   async function handleExport() {
     setExporting(true);
     try {
-      const { blob, filename } = await exportBackup();
       if (nativeApp) {
-        await shareBackupFile(blob, filename);
+        // 流式逐块写缓存文件再分享，几百张照片内存占用也恒定
+        await shareBackupFile(backupChunks, backupFilename());
         await markBackupDone();
         void loadStorage();
         toast.success("备份已生成", { description: "已调起系统分享，可保存到文件或发送" });
       } else {
+        const { blob, filename } = await exportBackup();
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -396,6 +412,39 @@ function SettingsPage() {
     }
   }
 
+  function onAiFiles(e: ChangeEvent<HTMLInputElement>) {
+    setAiImages(Array.from(e.target.files ?? []));
+    e.target.value = "";
+  }
+
+  async function handleAiParse() {
+    setAiBusy(true);
+    try {
+      const rows = await aiParseTimetable({ images: aiImages, text: aiText }, settings!.periods);
+      setAiOpen(false);
+      setDroppedFailed([]);
+      setParsed({ ok: rows, failed: [] });
+      setPasteOpen(true); // 复用既有预览 → applyTimetable 导入链路
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "AI 识别失败，再试一次");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function handleCheckUpdate() {
+    setChecking(true);
+    try {
+      const u = await checkUpdate();
+      if (u) setUpdate(u);
+      else toast("已是最新版本", { description: `当前 v${appVersion ?? "?"}` });
+    } catch {
+      toast.error("检查更新失败，看看网络");
+    } finally {
+      setChecking(false);
+    }
+  }
+
   function openPaste() {
     setPasteText("");
     setParsed(null);
@@ -404,7 +453,7 @@ function SettingsPage() {
   }
 
   function doParse() {
-    const result = parseTimetableText(pasteText);
+    const result = parseTimetableText(pasteText, settings!.periods);
     setParsed(result);
     setDroppedFailed([]);
     if (result.ok.length === 0) {
@@ -416,9 +465,9 @@ function SettingsPage() {
     if (!parsed) return;
     setImporting(true);
     try {
-      const n = await applyTimetable(parsed.ok);
+      const n = await applyTimetable(parsed.ok, settings!.periods);
       toast.success(`已导入 ${parsed.ok.length} 门课 · ${n} 个时段`, {
-        description: "去课表页看看效果",
+        description: "改过课表后，可到「待分类」一键重新匹配已有照片",
       });
       setPasteOpen(false);
       void getSettings().then(setSettings);
@@ -442,6 +491,24 @@ function SettingsPage() {
             : "未设置学期起始日"
         }
       >
+        {nativeApp && (
+          <>
+            <button
+              type="button"
+              onClick={() => setAiOpen(true)}
+              className="-mx-1 flex min-h-10 w-full items-center justify-between rounded-lg bg-primary/5 px-1 active:bg-muted"
+            >
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <Sparkles className="size-4 text-primary" />
+                AI 识别导入（推荐）
+              </span>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </button>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              拍一张教务系统课表截图（或粘贴文字），AI 自动排好课表，格式随便什么样都认得。
+            </p>
+          </>
+        )}
         <Link
           to="/schedule"
           className="-mx-1 flex min-h-10 items-center justify-between rounded-lg px-1 active:bg-muted"
@@ -474,18 +541,37 @@ function SettingsPage() {
         <div>
           <h3 className="text-xs font-medium text-muted-foreground">学期起始</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            填第 1 周周一的日期，照片归档靠它算周次。
+            填第 1 周周一的日期（选了别的日子会自动对齐到那周的周一），照片归档靠它算周次。
           </p>
           <Input
             type="date"
             value={settings.semesterStart}
-            onChange={(e) => persist({ ...settings, semesterStart: e.target.value })}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) {
+                persist({ ...settings, semesterStart: "" });
+                return;
+              }
+              // 周次锚点必须是周一，靠代码保证而不是靠用户记文案
+              const [y, m, d] = v.split("-").map(Number);
+              const date = new Date(y, m - 1, d);
+              const wd = weekdayOf(date.getTime());
+              if (wd !== 1) {
+                date.setDate(date.getDate() - (wd - 1));
+                const pad = (n: number) => String(n).padStart(2, "0");
+                const aligned = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+                persist({ ...settings, semesterStart: aligned });
+                toast(`第 1 周从周一起算，已自动对齐到 ${aligned}`);
+              } else {
+                persist({ ...settings, semesterStart: v });
+              }
+            }}
             className="mt-2 min-h-11"
           />
           {settings.semesterStart && (
             <p className="mt-1.5 text-xs">
               {week !== null ? (
-                <span className="font-medium text-green-600">现在是第 {week} 周 ✓</span>
+                <span className="font-medium text-green-600 dark:text-green-400">现在是第 {week} 周</span>
               ) : (
                 <span className="text-destructive">
                   当前日期不在学期范围内（1-{MAX_SEMESTER_WEEKS} 周），请检查日期
@@ -542,7 +628,7 @@ function SettingsPage() {
         </div>
       </FoldCard>
 
-      <FoldCard title="数据" summary="文件夹同步 / 备份 / 演示数据 / 清空">
+      <FoldCard title="数据" summary="文件夹同步 / 备份 / 清空">
         {folderOk ? (
           <div className="space-y-2">
             <h3 className="text-xs font-medium text-muted-foreground">照片存到哪里</h3>
@@ -566,12 +652,12 @@ function SettingsPage() {
                 <p className="text-xs">
                   {nativeApp ? (
                     <>
-                      <span className="font-medium text-green-600">照片自动存入系统相册「{folder.name}」</span>
+                      <span className="font-medium text-green-600 dark:text-green-400">照片自动存入系统相册「{folder.name}」</span>
                       <span className="text-muted-foreground">，新照片拍完即存</span>
                     </>
                   ) : (
                     <>
-                      <span className="font-medium text-green-600">照片存到「{folder.name}」</span>
+                      <span className="font-medium text-green-600 dark:text-green-400">照片存到「{folder.name}」</span>
                       <span className="text-muted-foreground">，新照片自动放进去</span>
                     </>
                   )}
@@ -677,26 +763,6 @@ function SettingsPage() {
 
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline" className="min-h-11 w-full" disabled={seeding}>
-              {seeding ? "填充中…" : "填充演示数据"}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>填充演示数据？</AlertDialogTitle>
-              <AlertDialogDescription>
-                会用 4 门示例课和 11 张示例照片覆盖当前的全部数据。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>先不填</AlertDialogCancel>
-              <AlertDialogAction onClick={handleSeed}>填充</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
             <Button
               variant="outline"
               className="min-h-11 w-full text-destructive hover:text-destructive"
@@ -719,7 +785,19 @@ function SettingsPage() {
         </AlertDialog>
       </FoldCard>
 
-      <p className="pb-2 text-center text-xs text-muted-foreground">课照助手 · v0.1</p>
+      <div className="flex items-center justify-between pb-2">
+        <p className="text-xs text-muted-foreground">课照助手 · v{appVersion ?? "1.4"}</p>
+        {nativeApp && (
+          <button
+            type="button"
+            onClick={() => void handleCheckUpdate()}
+            disabled={checking}
+            className="text-xs text-muted-foreground underline-offset-2 disabled:opacity-50 hover:underline active:opacity-70"
+          >
+            {checking ? "检查中…" : "检查更新"}
+          </button>
+        )}
+      </div>
       <input
         ref={xlsRef}
         type="file"
@@ -728,7 +806,62 @@ function SettingsPage() {
         onChange={handleXlsFile}
         aria-label="选择课表文件"
       />
+      <input
+        ref={aiFileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={onAiFiles}
+        aria-label="选择课表截图"
+      />
       </div>
+
+      <Dialog open={aiOpen} onOpenChange={(o) => !o && setAiOpen(false)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>AI 识别课表</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                选教务系统课表的截图，可多张（上半/下半各一张也行）
+              </p>
+              <Button
+                variant="outline"
+                className="min-h-11 w-full"
+                onClick={() => aiFileRef.current?.click()}
+              >
+                {aiImages.length > 0 ? `已选 ${aiImages.length} 张截图，点此重选` : "选择课表截图"}
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">没有截图？粘贴课表文字也行（选一个就够）</p>
+              <textarea
+                value={aiText}
+                onChange={(e) => setAiText(e.target.value)}
+                rows={4}
+                maxLength={8000}
+                placeholder="高等数学 周一 1-2节 1-16周 张老师…"
+                className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label="课表文字"
+              />
+            </div>
+            <Button
+              className="w-full"
+              disabled={aiBusy || (aiImages.length === 0 && !aiText.trim())}
+              onClick={() => void handleAiParse()}
+            >
+              {aiBusy ? "AI 识别中…（约十几秒）" : "开始识别"}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              识别完可以先预览再导入，课表随时能改
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <UpdateDialog update={update} onClose={() => setUpdate(null)} />
 
       <Dialog open={pasteOpen} onOpenChange={(o) => !o && setPasteOpen(false)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">

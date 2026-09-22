@@ -1,10 +1,46 @@
 // 原生 APP（Capacitor）能力适配层：安卓端相册写入、备份分享、自动存相册开关。
 // 插件全部走动态 import 且只在 isNativeApp() 分支里调用，网页端构建不加载任何原生逻辑。
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { toast } from "sonner";
 import { getMetaValue, putMetaValue } from "./db";
 
 export function isNativeApp(): boolean {
   return Capacitor.isNativePlatform();
+}
+
+/** backButton 注册所需的最小路由形状（避免拉入整个路由树泛型） */
+type BackButtonRouter = {
+  state: { location: { pathname: string } };
+  history: { canGoBack: () => boolean; back: () => void };
+  navigate: (opts: { to: string }) => void;
+};
+
+/**
+ * 安卓返回键（微信等国民 APP 惯例）：底部 Tab 根页面 = 双击退出；
+ * 子页（相册/拍照/课表编辑）= 逐级返回。Tab 切换不进历史栈（bottom-nav 用 replace）。
+ */
+export function setupAndroidBackButton(router: BackButtonRouter): void {
+  void (async () => {
+    const { App } = await import("@capacitor/app");
+    const TAB_ROOTS = new Set(["/", "/courses", "/settings"]);
+    let lastPress = 0;
+    App.addListener("backButton", () => {
+      const path = router.state.location.pathname;
+      if (TAB_ROOTS.has(path)) {
+        const now = Date.now();
+        if (now - lastPress < 2000) {
+          App.exitApp();
+        } else {
+          lastPress = now;
+          toast("再按一次退出");
+        }
+      } else if (router.history.canGoBack()) {
+        router.history.back();
+      } else {
+        router.navigate({ to: "/" });
+      }
+    });
+  })();
 }
 
 /** 系统相册里的相册名（安卓实际落在 Pictures/课照助手/） */
@@ -27,7 +63,7 @@ export async function setGalleryAutoSave(on: boolean): Promise<void> {
 interface GalleryStorePlugin {
   savePhoto(options: { path: string; fileName: string; album?: string }): Promise<{ filePath: string }>;
   deleteAlbumFiles(options: { album?: string }): Promise<{ deleted: number }>;
-  openFolder(options: { album?: string }): Promise<void>;
+  openFolder(options: { album?: string }): Promise<{ via?: string }>;
 }
 
 const GalleryStore = registerPlugin<GalleryStorePlugin>("GalleryStore");
@@ -65,9 +101,13 @@ export async function savePhotoToGallery(
 
 // ---------- 文件夹入口与结构迁移 ----------
 
-/** 用系统文件管理器打开 Pictures/课照助手 */
-export async function openGalleryFolder(): Promise<void> {
-  await GalleryStore.openFolder({ album: GALLERY_ALBUM });
+/**
+ * 打开照片存放位置：优先系统文件管理器直达 Pictures/课照助手，
+ * 机型不支持时由插件回退打开系统相册。返回实际走的方式供文案区分。
+ */
+export async function openGalleryFolder(): Promise<"files" | "gallery"> {
+  const r = await GalleryStore.openFolder({ album: GALLERY_ALBUM });
+  return r.via === "gallery" ? "gallery" : "files";
 }
 
 const ALBUM_STRUCTURE_KEY = "albumStructure";
@@ -112,7 +152,10 @@ export async function albumStructureUpToDate(): Promise<boolean> {
 
 /**
  * 调系统相机 App 拍一张：原生画质/对焦/变焦，拍完返回可直接入库的 File
- * （全分辨率、方向已转正、EXIF 拍摄时间保留）。用户取消返回 null。
+ * （全分辨率、方向已转正、EXIF 拍摄时间保留——插件重写文件后 copyExif 会写回 DateTimeOriginal）。
+ * 用户取消返回 null。
+ * saveToGallery 必须为 false：开 true 时 DCIM 存原图 + 我们镜像 Pictures/课照助手 存压缩版，
+ * 系统相册时间线里同一画面出现两张（实测不可接受）。
  */
 export async function takePhotoWithSystemCamera(): Promise<File | null> {
   const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
@@ -139,20 +182,28 @@ export async function takePhotoWithSystemCamera(): Promise<File | null> {
   });
 }
 
-// ---------- 备份导出（写缓存目录 + 系统分享面板） ----------
+// ---------- 备份导出（流式写缓存目录 + 系统分享面板） ----------
 
-function readAsBase64(blob: Blob): Promise<string> {
-  return readAsDataUrl(blob).then((s) => s.slice(s.indexOf(",") + 1));
-}
-
-/** 备份 JSON 写入应用缓存后调起系统分享，用户可保存到文件管理器或发送 */
-export async function shareBackupFile(blob: Blob, filename: string): Promise<void> {
+/**
+ * 备份流式落盘：逐块追加写入应用缓存文件（内存占用恒定，几百张照片也不怕），
+ * 写完调起系统分享，用户可保存到文件管理器或发送。
+ * chunks 由 lib/backup.ts 的 backupChunks() 提供。
+ */
+export async function shareBackupFile(
+  chunks: () => AsyncIterable<string>,
+  filename: string,
+): Promise<void> {
   const { Filesystem, Directory } = await import("@capacitor/filesystem");
-  const { uri } = await Filesystem.writeFile({
-    path: filename,
-    data: await readAsBase64(blob),
-    directory: Directory.Cache,
-  });
+  let first = true;
+  for await (const chunk of chunks()) {
+    if (first) {
+      await Filesystem.writeFile({ path: filename, data: chunk, directory: Directory.Cache });
+      first = false;
+    } else {
+      await Filesystem.appendFile({ path: filename, data: chunk, directory: Directory.Cache });
+    }
+  }
+  const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Cache });
   const { Share } = await import("@capacitor/share");
   await Share.share({ title: filename, files: [uri], dialogTitle: "保存或发送备份" });
 }
