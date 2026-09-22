@@ -109,6 +109,19 @@ function SchedulePage() {
     })
     .filter((x) => x.startIdx >= 0 && periods.length > 0);
 
+  // 同格（星期+起始节次+跨度）多门课分层渲染——绝对定位到同一格的多个课程块会完全重叠，
+  // 真实课表（同格不同周次换课）非常常见，叠成一团就是"渲染乱"的根因
+  type CellItem = { slot: ScheduleSlot; course: Course; span: number };
+  const cells = new Map<string, CellItem[]>();
+  for (const { slot, startIdx, span } of layout) {
+    const c = courseById.get(slot.courseId);
+    if (!c) continue;
+    const key = `${slot.weekday}|${startIdx}|${span}`;
+    const arr = cells.get(key) ?? [];
+    arr.push({ slot, course: c, span });
+    cells.set(key, arr);
+  }
+
   return (
     <PageShell>
     <div className="px-4 pt-6">
@@ -175,32 +188,43 @@ function SchedulePage() {
               </Fragment>
             ))}
 
-            {layout.map(({ slot, startIdx, span }) => {
-              const c = courseById.get(slot.courseId);
-              if (!c) return null;
+            {Array.from(cells.entries()).map(([key, items]) => {
+              const [weekday, startIdx, span] = key.split("|").map(Number);
+              const crowded = items.length > 1; // 同格多门课：每门独立小块，上下分层
               return (
-                <button
-                  key={slot.id}
-                  type="button"
+                <div
+                  key={key}
                   style={{
-                    gridColumn: slot.weekday + 1,
+                    gridColumn: weekday + 1,
                     gridRow: `${startIdx + 2} / span ${span}`,
-                    backgroundColor: `${c.color}1a`,
-                    borderLeft: `3px solid ${c.color}`,
                   }}
-                  onClick={() => setEditor({ slot, weekday: slot.weekday, periodIdx: startIdx })}
-                  className="z-10 m-px flex flex-col items-start justify-center overflow-hidden rounded-md px-1.5 py-1 text-left active:brightness-95"
+                  className="z-10 flex m-px flex-col gap-px"
                 >
-                  <span className="w-full truncate text-[11px] font-medium leading-4">{c.name}</span>
-                  {span > 1 && (
-                    <span className="text-[10px] leading-3 text-muted-foreground">
-                      {minToHHmm(slot.startMin)}–{minToHHmm(slot.endMin)}
-                    </span>
-                  )}
-                  <span className="text-[10px] leading-3 text-muted-foreground">
-                    {slotWeekLabel(slot)}
-                  </span>
-                </button>
+                  {items.map(({ slot, course: c, span: sp }) => (
+                    <button
+                      key={slot.id}
+                      type="button"
+                      onClick={() => setEditor({ slot, weekday: slot.weekday, periodIdx: startIdx })}
+                      style={{
+                        backgroundColor: `${c.color}1a`,
+                        borderLeft: `3px solid ${c.color}`,
+                      }}
+                      className="flex min-h-0 flex-1 flex-col items-start justify-center overflow-hidden rounded-md px-1.5 py-1 text-left active:brightness-95"
+                    >
+                      <span className={`w-full truncate font-medium leading-4 ${crowded ? "text-[10px]" : "text-[11px]"}`}>
+                        {c.name}
+                      </span>
+                      {!crowded && sp > 1 && (
+                        <span className="text-[10px] leading-3 text-muted-foreground">
+                          {minToHHmm(slot.startMin)}–{minToHHmm(slot.endMin)}
+                        </span>
+                      )}
+                      <span className="w-full truncate text-[10px] leading-3 text-muted-foreground">
+                        {slotWeekLabel(slot).replace(/周$/, "")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               );
             })}
           </div>
