@@ -14,16 +14,66 @@ function aiConfigured(): boolean {
   return !AI_BASE_URL.includes("REPLACE_ME") && !AI_API_KEY.includes("REPLACE_ME") && !AI_MODEL.includes("REPLACE_ME");
 }
 
-/** 截图压到长边 1280 再传（教务课表截图够清晰，控 token 与流量） */
-async function imageToDataUrl(blob: Blob, maxEdge = 1280): Promise<string> {
-  const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" });
-  const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+/** HTMLImageElement 兜底解码（部分安卓 WebView 的 createImageBitmap 对相册文件报
+ * "The source image could not be decoded"，img 元件路径兼容性最老牌；现代浏览器默认按 EXIF 转正） */
+function decodeViaImgElement(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("img decode failed"));
+    };
+    img.src = url;
+  });
+}
+
+function blobToRawDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error ?? new Error("读取图片失败"));
+    r.readAsDataURL(blob);
+  });
+}
+
+function canvasToDataUrl(
+  src: ImageBitmap | HTMLImageElement,
+  w: number,
+  h: number,
+  maxEdge: number,
+): string | null {
+  const scale = Math.min(1, maxEdge / Math.max(w, h));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bmp.width * scale);
-  canvas.height = Math.round(bmp.height * scale);
-  canvas.getContext("2d")?.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  bmp.close?.();
+  canvas.width = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  canvas.getContext("2d")?.drawImage(src, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", 0.85);
+}
+
+/** 截图压到长边 1280 再传（教务课表截图够清晰，控 token 与流量）；
+ * 三层解码兜底：createImageBitmap → <img> → 原样 base64（不压缩但保功能） */
+async function imageToDataUrl(blob: Blob, maxEdge = 1280): Promise<string> {
+  try {
+    const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" });
+    const out = canvasToDataUrl(bmp, bmp.width, bmp.height, maxEdge);
+    bmp.close?.();
+    if (out) return out;
+  } catch {
+    // 走 img 元件兜底
+  }
+  try {
+    const img = await decodeViaImgElement(blob);
+    const out = canvasToDataUrl(img, img.naturalWidth, img.naturalHeight, maxEdge);
+    if (out) return out;
+  } catch {
+    // 最后原样上传
+  }
+  return blobToRawDataUrl(blob);
 }
 
 function systemPrompt(periods: Period[]): string {
@@ -78,29 +128,41 @@ function toRow(raw: unknown, periods: Period[]): ParsedRow | null {
 }
 
 async function chat(periods: Period[], userContent: unknown[]): Promise<string> {
-  const res = await CapacitorHttp.post({
-    url: `${AI_BASE_URL}/chat/completions`,
-    headers: { Authorization: `Bearer ${AI_API_KEY}` },
-    data: {
-      model: AI_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt(periods) },
-        { role: "user", content: userContent },
-      ],
-      temperature: 0,
-    },
-    connectTimeout: 30000,
-    readTimeout: 180000, // 思考型模型出结果慢，放宽到 3 分钟
-  });
-  const body = res.data as {
-    choices?: { message?: { content?: string; reasoning_content?: string } }[];
-  };
+  let res;
+  try {
+    res = await CapacitorHttp.post({
+      url: `${AI_BASE_URL}/chat/completions`,
+      headers: { Authorization: `Bearer ${AI_API_KEY}`, "Content-Type": "application/json" },
+      data: {
+        model: AI_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt(periods) },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0,
+      },
+      connectTimeout: 30000,
+      readTimeout: 180000, // 思考型模型出结果慢，放宽到 3 分钟
+    });
+  } catch (e) {
+    // CapacitorHttp 非 2xx / 断网会 reject，把真实原因带给用户而不是笼统一句失败
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`AI 接口请求失败：${msg.slice(0, 120)}`);
+  }
+  // 兼容个别网关 Content-Type 不规范导致 CapacitorHttp 不自动解析的情况
+  const body =
+    typeof res.data === "string" ? (JSON.parse(res.data) as ChatResponse) : (res.data as ChatResponse);
   // 兼容思考模型：content 为空时从 reasoning_content 里找 JSON（extractRows 本就按正则抓取）
   const msg = body.choices?.[0]?.message;
   const text = msg?.content?.trim() || msg?.reasoning_content?.trim();
   if (!text) throw new Error("AI 没有返回内容，稍后再试一次");
   return text;
 }
+
+type ChatResponse = {
+  choices?: { message?: { content?: string; reasoning_content?: string } }[];
+  error?: { message?: string };
+};
 
 /**
  * AI 识别课表：截图（可多张，合并去重）或一段文字 → ParsedRow[]。
