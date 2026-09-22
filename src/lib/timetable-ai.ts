@@ -56,8 +56,9 @@ function canvasToDataUrl(
 }
 
 /** 截图压到长边 1280 再传（教务课表截图够清晰，控 token 与流量）；
- * 三层解码兜底：createImageBitmap → <img> → 原样 base64（不压缩但保功能） */
-async function imageToDataUrl(blob: Blob, maxEdge = 1280): Promise<string> {
+ * 三层解码兜底：createImageBitmap → <img> → 原样 base64（不压缩但保功能）。
+ * 必须在选图后立即调用——picker 给的临时授权 URI 延迟读取会 NotReadableError */
+export async function imageToDataUrl(blob: Blob, maxEdge = 1280): Promise<string> {
   try {
     const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" });
     const out = canvasToDataUrl(bmp, bmp.width, bmp.height, maxEdge);
@@ -142,7 +143,7 @@ async function chat(periods: Period[], userContent: unknown[]): Promise<string> 
         temperature: 0,
       },
       connectTimeout: 30000,
-      readTimeout: 180000, // 思考型模型出结果慢，放宽到 3 分钟
+      readTimeout: 300000, // 思考型模型出结果慢（复杂课表实测 2 分钟+），放宽到 5 分钟
     });
   } catch (e) {
     // CapacitorHttp 非 2xx / 断网会 reject，把真实原因带给用户而不是笼统一句失败
@@ -165,19 +166,19 @@ type ChatResponse = {
 };
 
 /**
- * AI 识别课表：截图（可多张，合并去重）或一段文字 → ParsedRow[]。
+ * AI 识别课表：截图（可多张，已转 dataURL——选图瞬间读取，避开临时授权失效）或一段文字 → ParsedRow[]。
  * 输出直接进既有 TimetablePreview 预览 → applyTimetable 导入链路。
  */
 export async function aiParseTimetable(
-  input: { images: Blob[]; text: string },
+  input: { imageDataUrls: string[]; text: string },
   periods: Period[],
 ): Promise<ParsedRow[]> {
   if (!aiConfigured()) {
     throw new Error("AI 还没有配置（开发者内测占位），联系开发者更新");
   }
   const parts: unknown[] = [];
-  for (const img of input.images) {
-    parts.push({ type: "image_url", image_url: { url: await imageToDataUrl(img) } });
+  for (const url of input.imageDataUrls) {
+    parts.push({ type: "image_url", image_url: { url } });
   }
   const instruction = "把这份课表解析成 JSON 数组";
   if (input.text.trim()) parts.push({ type: "text", text: `${instruction}：${input.text.trim()}` });

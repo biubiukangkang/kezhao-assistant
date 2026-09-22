@@ -131,9 +131,10 @@ function SettingsPage() {
     preview: BackupPreview;
     current: { courses: number; photos: number };
   } | null>(null);
-  // AI 识别导入
+  // AI 识别导入（截图选完立即读成 dataURL——picker 临时授权延迟读取会 NotReadableError）
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiImages, setAiImages] = useState<File[]>([]);
+  const [aiImageDataUrls, setAiImageDataUrls] = useState<string[]>([]);
+  const [aiReading, setAiReading] = useState(false);
   const [aiText, setAiText] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const aiFileRef = useRef<HTMLInputElement>(null);
@@ -412,15 +413,32 @@ function SettingsPage() {
     }
   }
 
-  function onAiFiles(e: ChangeEvent<HTMLInputElement>) {
-    setAiImages(Array.from(e.target.files ?? []));
+  async function onAiFiles(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
+    if (files.length === 0) return;
+    setAiReading(true);
+    try {
+      const { imageToDataUrl } = await import("@/lib/timetable-ai");
+      const urls: string[] = [];
+      for (const f of files) {
+        urls.push(await imageToDataUrl(f));
+      }
+      setAiImageDataUrls(urls);
+    } catch {
+      toast.error("截图读取失败，重新选一次试试");
+    } finally {
+      setAiReading(false);
+    }
   }
 
   async function handleAiParse() {
     setAiBusy(true);
     try {
-      const rows = await aiParseTimetable({ images: aiImages, text: aiText }, settings!.periods);
+      const rows = await aiParseTimetable(
+        { imageDataUrls: aiImageDataUrls, text: aiText },
+        settings!.periods,
+      );
       setAiOpen(false);
       setDroppedFailed([]);
       setParsed({ ok: rows, failed: [] });
@@ -830,9 +848,14 @@ function SettingsPage() {
               <Button
                 variant="outline"
                 className="min-h-11 w-full"
+                disabled={aiReading}
                 onClick={() => aiFileRef.current?.click()}
               >
-                {aiImages.length > 0 ? `已选 ${aiImages.length} 张截图，点此重选` : "选择课表截图"}
+                {aiReading
+                  ? "读取截图中…"
+                  : aiImageDataUrls.length > 0
+                    ? `已选 ${aiImageDataUrls.length} 张截图，点此重选`
+                    : "选择课表截图"}
               </Button>
             </div>
             <div className="space-y-1.5">
@@ -849,7 +872,7 @@ function SettingsPage() {
             </div>
             <Button
               className="w-full"
-              disabled={aiBusy || (aiImages.length === 0 && !aiText.trim())}
+              disabled={aiBusy || aiReading || (aiImageDataUrls.length === 0 && !aiText.trim())}
               onClick={() => void handleAiParse()}
             >
               {aiBusy ? "AI 识别中…（约十几秒）" : "开始识别"}
