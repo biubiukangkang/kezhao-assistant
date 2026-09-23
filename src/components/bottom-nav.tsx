@@ -11,7 +11,7 @@ export function BottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <nav className="shrink-0 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+    <nav className="shrink-0 border-t bg-background/95 pb-[max(var(--nav-bar-h),env(safe-area-inset-bottom))] backdrop-blur">
       <div className="mx-auto flex h-16 max-w-lg">
         {TABS.map(({ to, label, icon: Icon }) => {
           const active = to === "/" ? pathname === "/" : pathname.startsWith(to);

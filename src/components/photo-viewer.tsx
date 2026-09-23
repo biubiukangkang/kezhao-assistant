@@ -181,7 +181,7 @@ export function PhotoViewer({
         </button>
       )}
 
-      <div className="flex items-center justify-around pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3">
+      <div className="flex items-center justify-around pb-[max(1.25rem,var(--nav-bar-h),env(safe-area-inset-bottom))] pt-3">
         <button
           type="button"
           aria-label={photo.starred ? "取消星标" : "星标重点板书"}

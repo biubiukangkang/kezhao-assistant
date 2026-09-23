@@ -567,7 +567,7 @@ function AlbumPage() {
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
 
       {selectMode && (
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur">
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 pb-[max(1rem,var(--nav-bar-h),env(safe-area-inset-bottom))] pt-3 backdrop-blur">
           <div className="mx-auto flex max-w-lg items-center gap-2 px-4">
             <button
               type="button"

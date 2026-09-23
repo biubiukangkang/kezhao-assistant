@@ -24,12 +24,20 @@ export async function applyStatusBarStyle(dark: boolean): Promise<void> {
   await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light });
 }
 
-/** 启动时注入状态栏高度（安卓 WebView 里 env(safe-area-inset-top) 恒为 0，靠原生给真值） */
+/**
+ * 启动时注入系统栏高度（CSS px）。安卓 WebView 里 env(safe-area-inset-*) 恒为 0，
+ * 只能靠原生给真值；原生返回的是物理像素，必须除以 devicePixelRatio 换算成 CSS 像素，
+ * 否则留白会放大为密度倍数（3 倍屏就 3 倍高）。
+ */
 export async function injectStatusBarHeight(): Promise<void> {
   try {
-    const { height } = await GalleryStore.getStatusBarHeight();
+    const { height, navHeight } = await GalleryStore.getStatusBarHeight();
+    const dpr = window.devicePixelRatio || 1;
     if (height > 0) {
-      document.documentElement.style.setProperty("--status-bar-h", `${height}px`);
+      document.documentElement.style.setProperty("--status-bar-h", `${Math.round(height / dpr)}px`);
+    }
+    if (navHeight > 0) {
+      document.documentElement.style.setProperty("--nav-bar-h", `${Math.round(navHeight / dpr)}px`);
     }
   } catch {
     // 非 APP 环境静默
@@ -94,7 +102,7 @@ interface GalleryStorePlugin {
   deleteAlbumFiles(options: { album?: string }): Promise<{ deleted: number }>;
   openFolder(options: { album?: string }): Promise<{ via?: string }>;
   downloadUpdate(options: { url: string }): Promise<{ started: boolean }>;
-  getStatusBarHeight(): Promise<{ height: number }>;
+  getStatusBarHeight(): Promise<{ height: number; navHeight: number }>;
 }
 
 const GalleryStore = registerPlugin<GalleryStorePlugin>("GalleryStore");

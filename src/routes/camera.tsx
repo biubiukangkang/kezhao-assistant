@@ -228,7 +228,7 @@ function NativeCameraPage() {
               <p className="text-sm leading-6 text-amber-300">{confirmState.suggest.reason}</p>
             )}
           </div>
-          <div className="shrink-0 space-y-2 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
+          <div className="shrink-0 space-y-2 px-6 pb-[max(1.5rem,var(--nav-bar-h),env(safe-area-inset-bottom))] pt-4">
             {confirmState.suggest.course ? (
               <button
                 type="button"

@@ -37,15 +37,19 @@ public class GalleryStorePlugin extends Plugin {
     private BroadcastReceiver downloadReceiver = null;
     private long pendingDownloadId = -1;
 
-    /** Real status-bar height in px for the immersive layout (JS sets --status-bar-h). */
+    /** Real system-bar insets in PHYSICAL px (JS divides by devicePixelRatio). */
     @PluginMethod
     public void getStatusBarHeight(PluginCall call) {
         JSObject ret = new JSObject();
-        int h = 0;
+        int top = 0;
+        int bottom = 0;
         if (getContext() instanceof MainActivity) {
-            h = ((MainActivity) getContext()).getStatusBarInset();
+            MainActivity act = (MainActivity) getContext();
+            top = act.getStatusBarInset();
+            bottom = act.getNavBarInset();
         }
-        ret.put("height", h);
+        ret.put("height", top);
+        ret.put("navHeight", bottom);
         call.resolve(ret);
     }
 
