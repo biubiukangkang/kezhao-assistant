@@ -4,7 +4,7 @@ import ReactDOM from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { getRouter } from "./router";
-import { isNativeApp, setupAndroidBackButton, setupStatusBar } from "./lib/native";
+import { applyStatusBarStyle, injectStatusBarHeight, isNativeApp, setupAndroidBackButton } from "./lib/native";
 import "./styles.css";
 
 const router = getRouter();
@@ -13,14 +13,15 @@ const router = getRouter();
 document.addEventListener("pointerdown", () => toast.dismiss(), { passive: true });
 
 // 深色模式跟随系统：.dark 变量已在 styles.css 备好，这里只负责挂类（非 provider，不占根布局）；
-// 原生 APP 同时联动状态栏（避让 + 背景图标色，安卓 edge-to-edge 下 CSS 让不出状态栏）
+// 原生 APP 同时注入状态栏高度（沉浸式布局用）并联动状态栏图标颜色
 const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 function applyColorScheme(dark: boolean) {
   document.documentElement.classList.toggle("dark", dark);
-  if (isNativeApp()) void setupStatusBar(dark);
+  if (isNativeApp()) void applyStatusBarStyle(dark);
 }
 applyColorScheme(darkQuery.matches);
 darkQuery.addEventListener("change", (e) => applyColorScheme(e.matches));
+if (isNativeApp()) void injectStatusBarHeight();
 
 // 安卓返回键微信模式：Tab 根双击退出，子页逐级返回
 if (isNativeApp()) setupAndroidBackButton(router);

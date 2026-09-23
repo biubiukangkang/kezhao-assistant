@@ -37,6 +37,18 @@ public class GalleryStorePlugin extends Plugin {
     private BroadcastReceiver downloadReceiver = null;
     private long pendingDownloadId = -1;
 
+    /** Real status-bar height in px for the immersive layout (JS sets --status-bar-h). */
+    @PluginMethod
+    public void getStatusBarHeight(PluginCall call) {
+        JSObject ret = new JSObject();
+        int h = 0;
+        if (getContext() instanceof MainActivity) {
+            h = ((MainActivity) getContext()).getStatusBarInset();
+        }
+        ret.put("height", h);
+        call.resolve(ret);
+    }
+
     /**
      * In-app update download: uses the system DownloadManager (progress in the
      * notification bar), then opens the package installer when finished. This

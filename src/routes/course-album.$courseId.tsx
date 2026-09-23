@@ -343,7 +343,7 @@ function AlbumPage() {
 
   return (
     <div className="mx-auto flex h-dvh max-w-lg flex-col">
-      <header className="z-30 mb-3 flex shrink-0 items-center gap-1 border-b bg-background/95 px-2 py-2.5 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
+      <header className="z-30 mb-3 flex shrink-0 items-center gap-1 border-b bg-background/95 px-2 py-2.5 pt-[max(0.75rem,var(--status-bar-h),env(safe-area-inset-top))] backdrop-blur">
         <button
           type="button"
           aria-label="返回"

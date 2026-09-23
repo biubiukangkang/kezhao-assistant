@@ -13,6 +13,7 @@ import {
 import { ChevronLeft, ChevronRight, Clock, FolderInput, Share2, Star, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { exportPhotos } from "@/lib/photo-export";
+import { applyStatusBarStyle, isNativeApp } from "@/lib/native";
 import { minToHHmm } from "@/lib/periods";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -74,6 +75,14 @@ export function PhotoViewer({
   }
 
   useEffect(() => {
+    if (!isNativeApp()) return;
+    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    void applyStatusBarStyle(true);
+    return () => void applyStatusBarStyle(dark);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowLeft" && index > 0) onIndexChange(index - 1);
@@ -93,7 +102,7 @@ export function PhotoViewer({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black text-white">
-      <div className="flex items-center justify-between px-3 pt-[max(1rem,env(safe-area-inset-top))]">
+      <div className="flex items-center justify-between px-3 pt-[max(1rem,var(--status-bar-h),env(safe-area-inset-top))]">
         <button
           type="button"
           onClick={onClose}

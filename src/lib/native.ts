@@ -16,15 +16,23 @@ type BackButtonRouter = {
 };
 
 /**
- * 状态栏样式（深浅色联动）。内容避让由 MainActivity 的 fitsSystemWindows(true) 负责——
- * targetSdk 35+ 强制 edge-to-edge 且 StatusBar 插件的 setOverlaysWebView(false) 在其上是 no-op。
+ * 状态栏（微信式沉浸）：状态栏透明叠在页面上，页面用 --status-bar-h 变量自留高度；
+ * 这里负责把真实高度注入 CSS 变量，并按页面深浅切换状态栏图标颜色。
  */
-export async function setupStatusBar(dark: boolean): Promise<void> {
+export async function applyStatusBarStyle(dark: boolean): Promise<void> {
   const { StatusBar, Style } = await import("@capacitor/status-bar");
   await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light });
-  if (Capacitor.getPlatform() === "android") {
-    // 与 styles.css 的 --background（浅色 oklch(1 0 0) / 深色 oklch(0.129…)）保持一致
-    await StatusBar.setBackgroundColor({ color: dark ? "#17171e" : "#ffffff" });
+}
+
+/** 启动时注入状态栏高度（安卓 WebView 里 env(safe-area-inset-top) 恒为 0，靠原生给真值） */
+export async function injectStatusBarHeight(): Promise<void> {
+  try {
+    const { height } = await GalleryStore.getStatusBarHeight();
+    if (height > 0) {
+      document.documentElement.style.setProperty("--status-bar-h", `${height}px`);
+    }
+  } catch {
+    // 非 APP 环境静默
   }
 }
 
@@ -86,6 +94,7 @@ interface GalleryStorePlugin {
   deleteAlbumFiles(options: { album?: string }): Promise<{ deleted: number }>;
   openFolder(options: { album?: string }): Promise<{ via?: string }>;
   downloadUpdate(options: { url: string }): Promise<{ started: boolean }>;
+  getStatusBarHeight(): Promise<{ height: number }>;
 }
 
 const GalleryStore = registerPlugin<GalleryStorePlugin>("GalleryStore");

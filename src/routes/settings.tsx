@@ -14,13 +14,6 @@ import { parseTimetableWorkbook } from "@/lib/timetable-xls";
 import { TimetablePreview } from "@/components/timetable-preview";
 import { UpdateDialog } from "@/components/update-dialog";
 import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
-import { FileSpreadsheet, ClipboardPaste } from "lucide-react";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -139,7 +132,6 @@ function SettingsPage() {
     current: { courses: number; photos: number };
   } | null>(null);
   // AI 识别导入（截图选完立即读成 dataURL——picker 临时授权延迟读取会 NotReadableError）
-  const [importOpen, setImportOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiImageDataUrls, setAiImageDataUrls] = useState<string[]>([]);
   const [aiReading, setAiReading] = useState(false);
@@ -421,6 +413,41 @@ function SettingsPage() {
     }
   }
 
+  /** 混合导入：选到图片交给 AI 识别（可再补文字），选到 .xls/.xlsx 走本地解析 */
+  async function onImportFiles(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    const sheets = files.filter((f) => !f.type.startsWith("image/"));
+    if (images.length > 0) {
+      // 图片路径：立即读取为 dataURL 后进 AI 弹窗（预设提示词自动识别）
+      setAiReading(true);
+      try {
+        const { imageToDataUrl } = await import("@/lib/timetable-ai");
+        const urls: string[] = [];
+        for (const img of images) {
+          urls.push(await imageToDataUrl(img));
+        }
+        setAiImageDataUrls(urls);
+        setAiOpen(true);
+      } catch {
+        toast.error("截图读取失败，重新选一次试试");
+      } finally {
+        setAiReading(false);
+      }
+      if (sheets.length > 0) {
+        toast("选到的表格文件已忽略，图片优先走 AI 识别");
+      }
+    } else if (sheets.length > 0) {
+      // 纯表格文件：沿用 SheetJS 本地解析
+      const dt = { target: { value: "", files: [sheets[0]] } } as unknown as ChangeEvent<HTMLInputElement>;
+      await handleXlsFile(dt);
+      if (sheets.length > 1) {
+        toast(`一次只解析一个课表文件，已取第一个`);
+      }
+    }
+  }
+
   async function onAiFiles(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
@@ -517,20 +544,30 @@ function SettingsPage() {
             : "未设置学期起始日"
         }
       >
-        <button
-          type="button"
-          onClick={() => setImportOpen(true)}
-          className="-mx-1 flex min-h-11 w-full items-center justify-between rounded-lg bg-primary/5 px-2 active:bg-muted"
-        >
-          <span className="flex items-center gap-2 text-sm font-medium">
-            <Sparkles className="size-4 text-primary" />
-            导入课表
-          </span>
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            AI / 文件 / 文字
-            <ChevronRight className="size-4" />
-          </span>
-        </button>
+        <div className="space-y-0.5">
+          <button
+            type="button"
+            disabled={aiReading}
+            onClick={() => xlsRef.current?.click()}
+            className="-mx-1 flex min-h-11 w-full items-center justify-between rounded-lg bg-primary/5 px-2 active:bg-muted disabled:opacity-60"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Sparkles className="size-4 text-primary" />
+              导入课表
+            </span>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              {aiReading ? "读取中…" : "截图 / 课表文件"}
+              <ChevronRight className="size-4" />
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setAiOpen(true)}
+            className="px-1 text-xs text-muted-foreground underline-offset-2 hover:underline active:opacity-70"
+          >
+            没有截图？粘贴课表文字
+          </button>
+        </div>
         <Link
           to="/schedule"
           className="-mx-1 flex min-h-10 items-center justify-between rounded-lg px-2 active:bg-muted"
@@ -756,10 +793,11 @@ function SettingsPage() {
       <input
         ref={xlsRef}
         type="file"
-        accept=".xls,.xlsx"
+        accept="image/*,.xls,.xlsx"
+        multiple
         hidden
-        onChange={handleXlsFile}
-        aria-label="选择课表文件"
+        onChange={onImportFiles}
+        aria-label="选择课表截图或教务课表文件"
       />
       <input
         ref={aiFileRef}
@@ -771,54 +809,6 @@ function SettingsPage() {
         aria-label="选择课表截图"
       />
       </div>
-
-      <Drawer open={importOpen} onOpenChange={(o) => !o && setImportOpen(false)}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>导入课表</DrawerTitle>
-          </DrawerHeader>
-          <div className="space-y-1 px-4 pb-8">
-            {nativeApp && (
-              <button
-                type="button"
-                onClick={() => {
-                  setImportOpen(false);
-                  setAiOpen(true);
-                }}
-                className="flex min-h-13 w-full items-center gap-3 rounded-xl bg-primary/5 px-3 active:bg-muted"
-              >
-                <Sparkles className="size-5 shrink-0 text-primary" />
-                <span className="text-sm font-medium">AI 识别截图</span>
-                <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-[11px] text-primary-foreground">
-                  推荐
-                </span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setImportOpen(false);
-                xlsRef.current?.click();
-              }}
-              className="flex min-h-13 w-full items-center gap-3 rounded-xl px-3 active:bg-muted"
-            >
-              <FileSpreadsheet className="size-5 shrink-0 text-muted-foreground" />
-              <span className="text-sm">教务课表文件（.xls / .xlsx）</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setImportOpen(false);
-                openPaste();
-              }}
-              className="flex min-h-13 w-full items-center gap-3 rounded-xl px-3 active:bg-muted"
-            >
-              <ClipboardPaste className="size-5 shrink-0 text-muted-foreground" />
-              <span className="text-sm">粘贴课表文字</span>
-            </button>
-          </div>
-        </DrawerContent>
-      </Drawer>
 
       <Dialog open={aiOpen} onOpenChange={(o) => !o && setAiOpen(false)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">

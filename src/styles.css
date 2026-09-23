@@ -62,6 +62,7 @@
 }
 
 :root {
+  --status-bar-h: 0px; /* 原生注入的状态栏高度（微信式沉浸布局），非 APP 环境恒 0 */
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.129 0.042 264.695);

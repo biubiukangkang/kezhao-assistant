@@ -21,7 +21,7 @@ import {
 import { getSettings, listCourses, uid } from "@/lib/db";
 import { minToHHmm } from "@/lib/periods";
 import { slotWeekLabel } from "@/lib/match";
-import { isNativeApp, takePhotoWithSystemCamera } from "@/lib/native";
+import { applyStatusBarStyle, isNativeApp, takePhotoWithSystemCamera } from "@/lib/native";
 import type { CaptureSource, Course } from "@/lib/types";
 
 export const Route = createFileRoute("/camera")({
@@ -81,6 +81,15 @@ function NativeCameraPage() {
   const [importing, setImporting] = useState<string | null>(null);
   const flashTimer = useRef<number | undefined>(undefined);
   const [sessionBatchId] = useState(() => uid());
+
+  // 黑底页：状态栏用白色图标，离开时恢复系统深浅
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    void applyStatusBarStyle(true);
+    return () => void applyStatusBarStyle(dark);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     void Promise.all([getSettings(), listCourses()]).then(([s, cs]) => {
@@ -174,7 +183,7 @@ function NativeCameraPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black pt-[env(safe-area-inset-top)] text-white">
+    <div className="fixed inset-0 z-50 flex flex-col bg-black pt-[max(var(--status-bar-h),env(safe-area-inset-top))] text-white">
       {needSetup && !confirmState && (
         <button
           type="button"
@@ -390,6 +399,15 @@ function WebCameraPage() {
   // 一次打开相机 = 一批，首页「本次导入」按批整组展示
   const [sessionBatchId] = useState(() => uid());
 
+  // 黑底页：状态栏用白色图标，离开时恢复系统深浅
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    void applyStatusBarStyle(true);
+    return () => void applyStatusBarStyle(dark);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     let stream: MediaStream | null = null;
     let cancelled = false;
@@ -497,7 +515,7 @@ function WebCameraPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black pt-[env(safe-area-inset-top)] text-white">
+    <div className="fixed inset-0 z-50 flex flex-col bg-black pt-[max(var(--status-bar-h),env(safe-area-inset-top))] text-white">
       {error ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
           <p className="text-sm leading-6 text-white/80">{error}</p>
@@ -520,7 +538,7 @@ function WebCameraPage() {
             type="button"
             aria-label="关闭相机"
             onClick={() => router.history.back()}
-            className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 rounded-full bg-black/40 p-2"
+            className="absolute top-[max(1rem,var(--status-bar-h),env(safe-area-inset-top))] right-4 rounded-full bg-black/40 p-2"
           >
             <X className="size-5" />
           </button>
