@@ -613,7 +613,7 @@ function AlbumPage() {
         </DrawerContent>
       </Drawer>
 
-      <Toaster />
+      <Toaster duration={2800} />
     </div>
   );
 }

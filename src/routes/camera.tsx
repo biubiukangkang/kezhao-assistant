@@ -369,7 +369,7 @@ function NativeCameraPage() {
         </DrawerContent>
       </Drawer>
 
-      <Toaster />
+      <Toaster duration={2800} />
     </div>
   );
 }
@@ -568,7 +568,7 @@ function WebCameraPage() {
       )}
       {flash && <div className="pointer-events-none absolute inset-0 bg-white/80" />}
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
-      <Toaster />
+      <Toaster duration={2800} />
     </div>
   );
 }

@@ -71,7 +71,6 @@ function HomePage() {
       if (added > 0) {
         toast(`已新增 ${added} 张照片`, {
           description: "照片只存在本机，建议到「设置 → 导出备份」存一份",
-          duration: 8000,
         });
       }
     });

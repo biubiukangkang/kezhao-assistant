@@ -16,14 +16,11 @@ type BackButtonRouter = {
 };
 
 /**
- * 状态栏避让（安卓 15+/targetSdk 35+ 强制 edge-to-edge，内容会顶进状态栏后面；
- * 而 CSS env(safe-area-inset-top) 在安卓 WebView 恒为 0，靠 CSS 让不出来）。
- * 学习国民 APP 的做法：原生层把 WebView 布局到状态栏下方（overlay=false），
- * 状态栏背景与图标色跟随系统深浅色。
+ * 状态栏样式（深浅色联动）。内容避让由 MainActivity 的 fitsSystemWindows(true) 负责——
+ * targetSdk 35+ 强制 edge-to-edge 且 StatusBar 插件的 setOverlaysWebView(false) 在其上是 no-op。
  */
 export async function setupStatusBar(dark: boolean): Promise<void> {
   const { StatusBar, Style } = await import("@capacitor/status-bar");
-  await StatusBar.setOverlaysWebView({ overlay: false });
   await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light });
   if (Capacitor.getPlatform() === "android") {
     // 与 styles.css 的 --background（浅色 oklch(1 0 0) / 深色 oklch(0.129…)）保持一致

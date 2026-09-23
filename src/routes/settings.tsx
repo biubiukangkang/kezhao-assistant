@@ -14,6 +14,13 @@ import { parseTimetableWorkbook } from "@/lib/timetable-xls";
 import { TimetablePreview } from "@/components/timetable-preview";
 import { UpdateDialog } from "@/components/update-dialog";
 import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { FileSpreadsheet, ClipboardPaste } from "lucide-react";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -132,6 +139,7 @@ function SettingsPage() {
     current: { courses: number; photos: number };
   } | null>(null);
   // AI 识别导入（截图选完立即读成 dataURL——picker 临时授权延迟读取会 NotReadableError）
+  const [importOpen, setImportOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiImageDataUrls, setAiImageDataUrls] = useState<string[]>([]);
   const [aiReading, setAiReading] = useState(false);
@@ -509,58 +517,29 @@ function SettingsPage() {
             : "未设置学期起始日"
         }
       >
-        {nativeApp && (
-          <>
-            <button
-              type="button"
-              onClick={() => setAiOpen(true)}
-              className="-mx-1 flex min-h-10 w-full items-center justify-between rounded-lg bg-primary/5 px-1 active:bg-muted"
-            >
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <Sparkles className="size-4 text-primary" />
-                AI 识别导入（推荐）
-              </span>
-              <ChevronRight className="size-4 text-muted-foreground" />
-            </button>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              拍一张教务系统课表截图（或粘贴文字），AI 自动排好课表，格式随便什么样都认得。
-            </p>
-          </>
-        )}
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
+          className="-mx-1 flex min-h-11 w-full items-center justify-between rounded-lg bg-primary/5 px-2 active:bg-muted"
+        >
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <Sparkles className="size-4 text-primary" />
+            导入课表
+          </span>
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            AI / 文件 / 文字
+            <ChevronRight className="size-4" />
+          </span>
+        </button>
         <Link
           to="/schedule"
-          className="-mx-1 flex min-h-10 items-center justify-between rounded-lg px-1 active:bg-muted"
+          className="-mx-1 flex min-h-10 items-center justify-between rounded-lg px-2 active:bg-muted"
         >
           <span className="text-sm font-medium">管理课表</span>
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
-        <button
-          type="button"
-          onClick={() => xlsRef.current?.click()}
-          className="-mx-1 flex min-h-10 w-full items-center justify-between rounded-lg px-1 active:bg-muted"
-        >
-          <span className="text-sm font-medium">导入课表文件</span>
-          <ChevronRight className="size-4 text-muted-foreground" />
-        </button>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          直接选教务系统导出的 .xls / .xlsx 课表文件，自动识别全部课程。
-        </p>
-        <button
-          type="button"
-          onClick={openPaste}
-          className="-mx-1 flex min-h-10 w-full items-center justify-between rounded-lg px-1 active:bg-muted"
-        >
-          <span className="text-sm font-medium">从课表文本导入</span>
-          <ChevronRight className="size-4 text-muted-foreground" />
-        </button>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          把教务系统复制的课表整段粘进来，自动识别课程和周次。
-        </p>
         <div>
-          <h3 className="text-xs font-medium text-muted-foreground">学期起始</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            填第 1 周周一的日期（选了别的日子会自动对齐到那周的周一），照片归档靠它算周次。
-          </p>
+          <h3 className="text-xs font-medium text-muted-foreground">学期起始（第 1 周周一）</h3>
           <Input
             type="date"
             value={settings.semesterStart}
@@ -601,9 +580,6 @@ function SettingsPage() {
 
         <div>
           <h3 className="text-xs font-medium text-muted-foreground">节次时间</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            按学校作息改，改完自动保存（开始要早于结束）。
-          </p>
           <div className="mt-2 space-y-2">
             {settings.periods.map((p, i) => (
               <div key={i} className="flex items-center gap-2">
@@ -646,114 +622,110 @@ function SettingsPage() {
         </div>
       </FoldCard>
 
-      <FoldCard title="数据" summary="文件夹同步 / 备份 / 清空">
+      <FoldCard title="数据" summary="相册 / 备份 / 回收站">
         {folderOk ? (
-          <div className="space-y-2">
-            <h3 className="text-xs font-medium text-muted-foreground">照片存到哪里</h3>
-            {!folder || folder.name === null ? (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  {nativeApp
-                    ? "照片目前存在本应用内。开启后每张照片会自动存进系统相册「课照助手」，文件管理器里也能看到。"
-                    : "照片目前存在本应用内。想让照片以文件形式放进你选的文件夹？选一次文件夹，之后每张照片都会自动放进去。"}
-                </p>
-                <Button
-                  variant="outline"
-                  className="min-h-11 w-full"
-                  onClick={handlePickFolder}
-                >
-                  {nativeApp ? "开启自动存入相册" : "选择照片文件夹"}
-                </Button>
-              </>
-            ) : folder.permission === "granted" ? (
-              <>
+          !folder || folder.name === null ? (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {nativeApp ? "照片只存在应用内" : "照片只存在应用内"}
+              </p>
+              <Button
+                variant="outline"
+                className="min-h-9 px-3 text-xs"
+                onClick={handlePickFolder}
+              >
+                {nativeApp ? "存入系统相册" : "选文件夹"}
+              </Button>
+            </div>
+          ) : folder.permission === "granted" ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
                 <p className="text-xs">
-                  {nativeApp ? (
-                    <>
-                      <span className="font-medium text-green-600 dark:text-green-400">照片自动存入系统相册「{folder.name}」</span>
-                      <span className="text-muted-foreground">，新照片拍完即存</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-medium text-green-600 dark:text-green-400">照片存到「{folder.name}」</span>
-                      <span className="text-muted-foreground">，新照片自动放进去</span>
-                    </>
-                  )}
+                  <span className="font-medium text-green-600 dark:text-green-400">
+                    {nativeApp ? "自动存入系统相册" : `自动存到「${folder.name}」`}
+                  </span>
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
+                  {nativeApp && (
+                    <Button variant="outline" className="min-h-8 px-2.5 text-xs" onClick={handleOpenFolder}>
+                      查看
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
-                    className="min-h-11 flex-1"
+                    className="min-h-8 px-2.5 text-xs"
                     disabled={syncing}
                     onClick={handleSyncAll}
                   >
-                    {syncing ? "放入中…" : "把已有照片放进去"}
+                    {syncing ? "同步中…" : "同步全部"}
                   </Button>
                   <Button
                     variant="outline"
-                    className="min-h-11 flex-1 text-destructive hover:text-destructive"
+                    className="min-h-8 px-2.5 text-xs text-destructive hover:text-destructive"
                     onClick={handleStopSync}
                   >
                     停止
                   </Button>
                 </div>
-                {nativeApp && (
-                  <Button
-                    variant="outline"
-                    className="min-h-11 w-full"
-                    onClick={handleOpenFolder}
-                  >
-                    打开相册文件夹
-                  </Button>
-                )}
-              </>
-            ) : (
-              <>
-                <p className="text-xs">
-                  <span className="font-medium text-amber-600">需要重新授权</span>{" "}
-                  <span className="text-muted-foreground">
-                    文件夹「{folder.name}」的权限已过期，点一下就能恢复
-                  </span>
-                </p>
-                <Button
-                  variant="outline"
-                  className="min-h-11 w-full"
-                  onClick={handleRegrant}
-                >
-                  重新授权文件夹
-                </Button>
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-amber-600">文件夹授权已过期</p>
+              <Button variant="outline" className="min-h-9 px-3 text-xs" onClick={handleRegrant}>
+                重新授权
+              </Button>
+            </div>
+          )
         ) : (
           <p className="text-xs text-muted-foreground">
-            这个浏览器不支持选择照片文件夹（安卓 Chrome 或电脑版 Chrome / Edge 可以），
-            照片会先存在本应用内，不影响使用。
+            当前浏览器不支持文件夹同步，照片存在应用内，不影响使用。
           </p>
         )}
 
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
             {storage
-              ? `本应用现有照片 ${storage.photos} 张${storage.trashed > 0 ? `（回收站 ${storage.trashed} 张）` : ""}${storage.usageMB ? ` · 约占 ${storage.usageMB} MB` : ""}`
-              : "正在统计照片…"}
+              ? `照片 ${storage.photos} 张${storage.trashed > 0 ? ` · 回收站 ${storage.trashed} 张` : ""}${storage.usageMB ? ` · ${storage.usageMB} MB` : ""}`
+              : "正在统计…"}
           </p>
-          <Button
-            variant="outline"
-            className="min-h-11 w-full"
-            disabled={exporting}
-            onClick={handleExport}
-          >
-            {exporting ? "导出中…" : "导出备份（含全部照片）"}
-          </Button>
-          <Button
-            variant="outline"
-            className="min-h-11 w-full"
-            disabled={restoring}
-            onClick={() => restoreRef.current?.click()}
-          >
-            {restoring ? "读取备份中…" : "从备份恢复"}
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className="min-h-10 text-sm" disabled={exporting} onClick={handleExport}>
+              {exporting ? "导出中…" : "导出备份"}
+            </Button>
+            <Button variant="outline" className="min-h-10 text-sm" disabled={restoring} onClick={() => restoreRef.current?.click()}>
+              {restoring ? "读取中…" : "从备份恢复"}
+            </Button>
+            <Button
+              variant="outline"
+              className="min-h-10 text-sm"
+              onClick={() => {
+                void loadTrash();
+                setTrashOpen(true);
+              }}
+            >
+              回收站{storage && storage.trashed > 0 ? `（${storage.trashed}）` : ""}
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="min-h-10 text-sm text-destructive hover:text-destructive">
+                  清空数据
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>清空全部数据？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    课表、课程和所有照片都会删除，无法恢复。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>先不清</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClear}>全部清空</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
           <input
             ref={restoreRef}
             type="file"
@@ -762,45 +734,10 @@ function SettingsPage() {
             onChange={handleRestorePick}
             aria-label="选择备份文件"
           />
-          <Button
-            variant="outline"
-            className="min-h-11 w-full"
-            onClick={() => {
-              void loadTrash();
-              setTrashOpen(true);
-            }}
-          >
-            回收站{storage && storage.trashed > 0 ? `（${storage.trashed}）` : ""}
-          </Button>
           <p className="text-center text-xs text-muted-foreground">
-            {nativeApp
-              ? "照片和课表都保存在本应用内，不会上传；卸载应用会清掉应用内数据（系统相册里的照片不受影响），请定期导出备份。"
-              : "照片和课表都保存在本应用内（本机浏览器），不会上传；手机上清理浏览器数据或卸载浏览器会一并清掉，请定期导出备份。"}
+            照片只存本机不上传，卸载即清空——记得定期导出备份。
           </p>
         </div>
-
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button
-              variant="outline"
-              className="min-h-11 w-full text-destructive hover:text-destructive"
-            >
-              清空全部数据
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>清空全部数据？</AlertDialogTitle>
-              <AlertDialogDescription>
-                课表、课程和所有照片都会删除，无法恢复。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>先不清</AlertDialogCancel>
-              <AlertDialogAction onClick={handleClear}>全部清空</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </FoldCard>
 
       <div className="flex items-center justify-between pb-2">
@@ -835,6 +772,54 @@ function SettingsPage() {
       />
       </div>
 
+      <Drawer open={importOpen} onOpenChange={(o) => !o && setImportOpen(false)}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>导入课表</DrawerTitle>
+          </DrawerHeader>
+          <div className="space-y-1 px-4 pb-8">
+            {nativeApp && (
+              <button
+                type="button"
+                onClick={() => {
+                  setImportOpen(false);
+                  setAiOpen(true);
+                }}
+                className="flex min-h-13 w-full items-center gap-3 rounded-xl bg-primary/5 px-3 active:bg-muted"
+              >
+                <Sparkles className="size-5 shrink-0 text-primary" />
+                <span className="text-sm font-medium">AI 识别截图</span>
+                <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-[11px] text-primary-foreground">
+                  推荐
+                </span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setImportOpen(false);
+                xlsRef.current?.click();
+              }}
+              className="flex min-h-13 w-full items-center gap-3 rounded-xl px-3 active:bg-muted"
+            >
+              <FileSpreadsheet className="size-5 shrink-0 text-muted-foreground" />
+              <span className="text-sm">教务课表文件（.xls / .xlsx）</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setImportOpen(false);
+                openPaste();
+              }}
+              className="flex min-h-13 w-full items-center gap-3 rounded-xl px-3 active:bg-muted"
+            >
+              <ClipboardPaste className="size-5 shrink-0 text-muted-foreground" />
+              <span className="text-sm">粘贴课表文字</span>
+            </button>
+          </div>
+        </DrawerContent>
+      </Drawer>
+
       <Dialog open={aiOpen} onOpenChange={(o) => !o && setAiOpen(false)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
@@ -842,9 +827,7 @@ function SettingsPage() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">
-                选教务系统课表的截图，可多张（上半/下半各一张也行）
-              </p>
+              <p className="text-xs text-muted-foreground">教务课表截图，可多张</p>
               <Button
                 variant="outline"
                 className="min-h-11 w-full"
@@ -859,7 +842,7 @@ function SettingsPage() {
               </Button>
             </div>
             <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">没有截图？粘贴课表文字也行（选一个就够）</p>
+              <p className="text-xs text-muted-foreground">或粘贴课表文字</p>
               <textarea
                 value={aiText}
                 onChange={(e) => setAiText(e.target.value)}
@@ -875,11 +858,8 @@ function SettingsPage() {
               disabled={aiBusy || aiReading || (aiImageDataUrls.length === 0 && !aiText.trim())}
               onClick={() => void handleAiParse()}
             >
-              {aiBusy ? "AI 识别中…（约十几秒）" : "开始识别"}
+              {aiBusy ? "AI 识别中…" : "开始识别"}
             </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              识别完可以先预览再导入，课表随时能改
-            </p>
           </div>
         </DialogContent>
       </Dialog>

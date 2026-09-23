@@ -2,11 +2,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { getRouter } from "./router";
 import { isNativeApp, setupAndroidBackButton, setupStatusBar } from "./lib/native";
 import "./styles.css";
 
 const router = getRouter();
+
+// toast 学大 APP：自动消失快（各 Toaster 统一 2.8s），点屏幕任意处立即收掉
+document.addEventListener("pointerdown", () => toast.dismiss(), { passive: true });
 
 // 深色模式跟随系统：.dark 变量已在 styles.css 备好，这里只负责挂类（非 provider，不占根布局）；
 // 原生 APP 同时联动状态栏（避让 + 背景图标色，安卓 edge-to-edge 下 CSS 让不出状态栏）
