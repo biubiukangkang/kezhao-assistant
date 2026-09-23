@@ -10,7 +10,6 @@ import {
   type ParseResult,
 } from "@/lib/timetable-parse";
 import { aiParseTimetable } from "@/lib/timetable-ai";
-import { parseTimetableWorkbook } from "@/lib/timetable-xls";
 import { TimetablePreview } from "@/components/timetable-preview";
 import { UpdateDialog } from "@/components/update-dialog";
 import {
@@ -134,6 +133,8 @@ function SettingsPage() {
   // AI 识别导入（截图选完立即读成 dataURL——picker 临时授权延迟读取会 NotReadableError）
   const [aiOpen, setAiOpen] = useState(false);
   const [aiImageDataUrls, setAiImageDataUrls] = useState<string[]>([]);
+  const [aiSheetText, setAiSheetText] = useState(""); // 表格文件转出的 CSV 文本
+  const [aiSheetCount, setAiSheetCount] = useState(0);
   const [aiReading, setAiReading] = useState(false);
   const [aiText, setAiText] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -161,25 +162,6 @@ function SettingsPage() {
 
   async function loadTrash() {
     setDeleted(await listDeletedPhotos());
-  }
-
-  async function handleXlsFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    try {
-      const buf = await file.arrayBuffer();
-      const slots = parseTimetableWorkbook(buf);
-      if (slots.length === 0) {
-        toast.error("没从这个文件里认出课表，确认是教务系统导出的课表文件");
-        return;
-      }
-      setParsed({ ok: slots, failed: [] });
-      setDroppedFailed([]);
-      setPasteOpen(true);
-    } catch {
-      toast.error("文件读取失败，换一个试试");
-    }
   }
 
   useEffect(() => {
@@ -413,65 +395,51 @@ function SettingsPage() {
     }
   }
 
-  /** 混合导入：选到图片交给 AI 识别（可再补文字），选到 .xls/.xlsx 走本地解析 */
+  /** 混合导入，全部交给 AI：图片→压缩 dataURL（视觉识别），Excel/表格→SheetJS 转 CSV 文本 */
+  async function loadImportFiles(files: File[], openDialog: boolean) {
+    if (files.length === 0) return;
+    setAiReading(true);
+    try {
+      const { imageToDataUrl, workbookToText } = await import("@/lib/timetable-ai");
+      const urls: string[] = [];
+      const sheets: string[] = [];
+      for (const f of files) {
+        if (f.type.startsWith("image/")) {
+          urls.push(await imageToDataUrl(f));
+        } else {
+          sheets.push(workbookToText(await f.arrayBuffer()));
+        }
+      }
+      if (urls.length > 0) setAiImageDataUrls(urls);
+      if (sheets.length > 0) {
+        setAiSheetText(sheets.join("\n\n"));
+        setAiSheetCount(sheets.length);
+      }
+      if (openDialog) setAiOpen(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? `文件读取失败：${err.message.slice(0, 80)}` : "文件读取失败，重新选一次试试");
+    } finally {
+      setAiReading(false);
+    }
+  }
+
   async function onImportFiles(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    const images = files.filter((f) => f.type.startsWith("image/"));
-    const sheets = files.filter((f) => !f.type.startsWith("image/"));
-    if (images.length > 0) {
-      // 图片路径：立即读取为 dataURL 后进 AI 弹窗（预设提示词自动识别）
-      setAiReading(true);
-      try {
-        const { imageToDataUrl } = await import("@/lib/timetable-ai");
-        const urls: string[] = [];
-        for (const img of images) {
-          urls.push(await imageToDataUrl(img));
-        }
-        setAiImageDataUrls(urls);
-        setAiOpen(true);
-      } catch {
-        toast.error("截图读取失败，重新选一次试试");
-      } finally {
-        setAiReading(false);
-      }
-      if (sheets.length > 0) {
-        toast("选到的表格文件已忽略，图片优先走 AI 识别");
-      }
-    } else if (sheets.length > 0) {
-      // 纯表格文件：沿用 SheetJS 本地解析
-      const dt = { target: { value: "", files: [sheets[0]] } } as unknown as ChangeEvent<HTMLInputElement>;
-      await handleXlsFile(dt);
-      if (sheets.length > 1) {
-        toast(`一次只解析一个课表文件，已取第一个`);
-      }
-    }
+    await loadImportFiles(files, true);
   }
 
   async function onAiFiles(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (files.length === 0) return;
-    setAiReading(true);
-    try {
-      const { imageToDataUrl } = await import("@/lib/timetable-ai");
-      const urls: string[] = [];
-      for (const f of files) {
-        urls.push(await imageToDataUrl(f));
-      }
-      setAiImageDataUrls(urls);
-    } catch {
-      toast.error("截图读取失败，重新选一次试试");
-    } finally {
-      setAiReading(false);
-    }
+    await loadImportFiles(files, false);
   }
 
   async function handleAiParse() {
     setAiBusy(true);
     try {
       const rows = await aiParseTimetable(
-        { imageDataUrls: aiImageDataUrls, text: aiText },
+        { imageDataUrls: aiImageDataUrls, text: [aiSheetText, aiText].filter(Boolean).join("\n\n") },
         settings!.periods,
       );
       setAiOpen(false);
@@ -802,11 +770,11 @@ function SettingsPage() {
       <input
         ref={aiFileRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.xls,.xlsx,.csv"
         multiple
         hidden
         onChange={onAiFiles}
-        aria-label="选择课表截图"
+        aria-label="选择课表截图或表格文件"
       />
       </div>
 
@@ -817,7 +785,7 @@ function SettingsPage() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">教务课表截图，可多张</p>
+              <p className="text-xs text-muted-foreground">教务课表截图或 Excel 文件，可多选</p>
               <Button
                 variant="outline"
                 className="min-h-11 w-full"
@@ -825,14 +793,14 @@ function SettingsPage() {
                 onClick={() => aiFileRef.current?.click()}
               >
                 {aiReading
-                  ? "读取截图中…"
-                  : aiImageDataUrls.length > 0
-                    ? `已选 ${aiImageDataUrls.length} 张截图，点此重选`
-                    : "选择课表截图"}
+                  ? "读取文件中…"
+                  : aiImageDataUrls.length + aiSheetCount > 0
+                    ? `已选 ${aiImageDataUrls.length} 张截图${aiSheetCount > 0 ? ` · ${aiSheetCount} 个表格` : ""}，点此重选`
+                    : "选择课表文件"}
               </Button>
             </div>
             <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">或粘贴课表文字</p>
+              <p className="text-xs text-muted-foreground">或补充粘贴课表文字</p>
               <textarea
                 value={aiText}
                 onChange={(e) => setAiText(e.target.value)}
@@ -845,7 +813,7 @@ function SettingsPage() {
             </div>
             <Button
               className="w-full"
-              disabled={aiBusy || aiReading || (aiImageDataUrls.length === 0 && !aiText.trim())}
+              disabled={aiBusy || aiReading || (aiImageDataUrls.length === 0 && aiSheetCount === 0 && !aiText.trim())}
               onClick={() => void handleAiParse()}
             >
               {aiBusy ? "AI 识别中…" : "开始识别"}

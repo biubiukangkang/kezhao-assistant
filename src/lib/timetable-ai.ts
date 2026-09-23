@@ -1,6 +1,7 @@
-// AI 课表识别：截图/文本 → ParsedRow（走原生 CapacitorHttp，免 CORS，APP 线专用）。
+// AI 课表识别：截图/表格文件/文字 → ParsedRow（走原生 CapacitorHttp，免 CORS，APP 线专用）。
 // 内置 API 配置（内测小范围分发，仓库保持私有勿公开）。
 import { CapacitorHttp } from "@capacitor/core";
+import * as XLSX from "xlsx";
 import type { ParsedRow } from "./timetable-parse";
 import type { Period } from "./types";
 
@@ -81,16 +82,28 @@ function systemPrompt(periods: Period[]): string {
   const periodLines = periods
     .map((p, i) => `第${i * 2 + 1}-${i * 2 + 2}节(大节${i}): ${Math.floor(p.startMin / 60)}:${String(p.startMin % 60).padStart(2, "0")}~${Math.floor(p.endMin / 60)}:${String(p.endMin % 60).padStart(2, "0")}`)
     .join("\n");
-  return `你是课表结构化助手。把用户给的大学课表（截图或文字）解析成 JSON 数组，每个元素格式：
+  return `你是课表结构化助手。用户会给大学课表，形式可能是：截图、表格文本（CSV，来自教务系统导出的 Excel）、或普通文字描述——三种输入统一解析成 JSON 数组，每个元素格式：
 {"name":"课程名","teacher":"教师名或空字符串","weekday":1到7的数字(1=周一,7=周日),"p0":大节起始索引,"p1":大节结束索引,"weeks":[1,2,3...]}
 规则：
 - 本校作息（一天${periods.length}个大节，两个小节为一个大节）：
 ${periodLines}
 - 小节号换算大节索引：第1-2节=大节0，第3-4节=大节1，第5-6节=大节2，以此类推；"第3节"单独一节时也是大节1
+- 表格文本里的表头（星期/节次/周次等）用来定位行列，本身不是课程；坐标布局或逐行清单布局都要能读
 - weeks 是上课周次数组(1-30)："1-16周"→[1,2,...,16]；"单周"→所有奇数周；"双周"→所有偶数周；没写周次→[1..16]
 - 一个格子里有多门课（不同周次）拆成多条；同一门课的多个时段也是多条
 - 忽略"开学第一周""上课周次"等表头说明文字
 - 只输出 JSON 数组本身，不要 markdown 围栏、不要任何解释`;
+}
+
+/** Excel/表格文件 → CSV 文本（SheetJS 读原始单元格，不挑格式；交给 AI 理解任意布局） */
+export function workbookToText(data: ArrayBuffer): string {
+  const wb = XLSX.read(data, { type: "array" });
+  const parts: string[] = [];
+  for (const name of wb.SheetNames) {
+    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name], { blankrows: false });
+    if (csv.trim()) parts.push(`【工作表：${name}】\n${csv}`);
+  }
+  return parts.join("\n\n");
 }
 
 /** 从 AI 回复里剥出 JSON 数组（容忍围栏和前后废话） */
