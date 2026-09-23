@@ -1,6 +1,10 @@
 package cn.kezhao.assistant;
 
+import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
 import android.content.ContentValues;
+import android.content.Context;
+import android.content.IntentFilter;
 import android.net.Uri;
 import android.provider.MediaStore;
 import android.util.Base64;
@@ -29,6 +33,65 @@ public class GalleryStorePlugin extends Plugin {
 
     /** \u8bfe\u7167\u52a9\u624b = default gallery album name */
     private static final String DEFAULT_ALBUM = "\u8bfe\u7167\u52a9\u624b";
+
+    private BroadcastReceiver downloadReceiver = null;
+    private long pendingDownloadId = -1;
+
+    /**
+     * In-app update download: uses the system DownloadManager (progress in the
+     * notification bar), then opens the package installer when finished. This
+     * replaces the old "open browser on GitHub" flow which users could not
+     * complete (GitHub is unreachable on most CN phones, plus CORS blocks the
+     * version check inside the WebView).
+     */
+    @PluginMethod
+    public void downloadUpdate(PluginCall call) {
+        String url = call.getString("url");
+        if (url == null || !(url.startsWith("https://") || url.startsWith("http://"))) {
+            call.reject("invalid url");
+            return;
+        }
+        try {
+            DownloadManager dm = (DownloadManager) getContext()
+                    .getSystemService(Context.DOWNLOAD_SERVICE);
+            DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+            req.setTitle("\u8bfe\u7167\u52a9\u624b\u66f4\u65b0"); // app update
+            req.setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS, "kezhao-update.apk");
+            req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            req.setMimeType("application/vnd.android.package-archive");
+            if (downloadReceiver == null) {
+                downloadReceiver = new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        long doneId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+                        if (doneId != pendingDownloadId || pendingDownloadId == -1) return;
+                        Uri fileUri = dm.getUriForDownloadedFile(doneId);
+                        if (fileUri == null) return;
+                        Intent install = new Intent(Intent.ACTION_VIEW);
+                        install.setDataAndType(fileUri, "application/vnd.android.package-archive");
+                        install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                                | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        try {
+                            getContext().startActivity(install);
+                        } catch (Exception ignored) {
+                            // First run on Android 8+: user must grant
+                            // "install unknown apps" once; the system already
+                            // showed the prompt, nothing else to do.
+                        }
+                    }
+                };
+                getContext().registerReceiver(downloadReceiver,
+                        new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+            }
+            pendingDownloadId = dm.enqueue(req);
+            JSObject ret = new JSObject();
+            ret.put("started", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("downloadUpdate failed: " + e.getMessage());
+        }
+    }
 
     @PluginMethod
     public void savePhoto(PluginCall call) {

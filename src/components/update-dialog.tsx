@@ -29,7 +29,7 @@ export function UpdateDialog({
                 <p key={i}>· {line}</p>
               ))}
               <p className="pt-1 text-muted-foreground">
-                点「立即更新」会打开浏览器下载，下载完在通知栏点开安装，
+                点「下载并安装」后进度在通知栏看，下完自动弹出安装，
                 <span className="font-medium text-foreground">直接覆盖安装</span>
                 ——照片、课表、设置全部自动保留，别卸载重装。
               </p>
@@ -44,7 +44,7 @@ export function UpdateDialog({
               onClose();
             }}
           >
-            立即更新
+            下载并安装
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

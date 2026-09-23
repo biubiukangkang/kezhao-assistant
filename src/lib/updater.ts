@@ -1,8 +1,11 @@
 // 应用内检查更新：GitHub Releases 托管 version.json + APK，覆盖安装数据保留。
-import { isNativeApp } from "./native";
+import { downloadAndInstallApk, isNativeApp } from "./native";
 
-// 本仓库 Release 的固定下载地址（latest/download，发新版不用改 APP）
-const UPDATE_MANIFEST_URL = "https://github.com/biubiukangkang/kezhao-assistant/releases/latest/download/version.json";
+// 多源依次尝试：WebView fetch 会被 CORS 拦（GitHub 资产无跨域头）且国内直连不稳，
+// 检查与下载全走原生层。TODO(chen): gitee 国内镜像建好后放首位。
+const MANIFEST_SOURCES = [
+  "https://github.com/biubiukangkang/kezhao-assistant/releases/latest/download/version.json",
+];
 
 export type UpdateInfo = {
   versionName: string;
@@ -33,6 +36,31 @@ export async function currentVersion(): Promise<string | null> {
   return info.version ?? null;
 }
 
+/** 拉取更新清单：CapacitorHttp 原生请求（免 CORS），多源依次尝试，全失败返回 null（静默） */
+async function fetchManifest(): Promise<UpdateInfo | null> {
+  const { CapacitorHttp } = await import("@capacitor/core");
+  for (const url of MANIFEST_SOURCES) {
+    try {
+      const res = await CapacitorHttp.get({
+        url,
+        connectTimeout: 8000,
+        readTimeout: 15000,
+      });
+      // 资产域回的是 octet-stream，data 可能是字符串
+      const m =
+        typeof res.data === "string"
+          ? (JSON.parse(res.data) as UpdateInfo)
+          : (res.data as UpdateInfo);
+      if (m && typeof m.versionName === "string" && typeof m.apkUrl === "string") {
+        return m;
+      }
+    } catch {
+      // 试下一个源
+    }
+  }
+  return null;
+}
+
 /**
  * 检查更新：manifest 拉不到/不需要更新都返回 null（静默）。
  * 只在原生 APP 有意义。
@@ -41,19 +69,17 @@ export async function checkUpdate(): Promise<UpdateInfo | null> {
   if (!isNativeApp()) return null;
   const local = await currentVersion();
   if (!local) return null;
-  try {
-    const res = await fetch(UPDATE_MANIFEST_URL, { cache: "no-store" });
-    if (!res.ok) return null;
-    const m = (await res.json()) as UpdateInfo;
-    if (typeof m.versionName !== "string" || typeof m.apkUrl !== "string") return null;
-    return isNewer(m.versionName, local) ? m : null;
-  } catch {
-    return null; // 无网/地址未配置：静默
-  }
+  const m = await fetchManifest();
+  if (!m) return null;
+  return isNewer(m.versionName, local) ? m : null;
 }
 
-/** 打开系统浏览器下载 APK（下载完在通知栏点开，直接覆盖安装） */
+/** 应用内下载并安装：系统下载器（通知栏进度）→ 完成自动弹安装器；失败兜底浏览器 */
 export async function openUpdateDownload(url: string): Promise<void> {
-  const { Browser } = await import("@capacitor/browser");
-  await Browser.open({ url });
+  try {
+    await downloadAndInstallApk(url);
+  } catch {
+    const { Browser } = await import("@capacitor/browser");
+    await Browser.open({ url });
+  }
 }

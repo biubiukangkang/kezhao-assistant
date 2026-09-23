@@ -29,6 +29,14 @@ export async function setupStatusBar(dark: boolean): Promise<void> {
 }
 
 /**
+ * 应用内更新下载：系统 DownloadManager 下载（通知栏看进度），
+ * 完成后自动弹系统安装器，覆盖安装即可。
+ */
+export async function downloadAndInstallApk(url: string): Promise<void> {
+  await GalleryStore.downloadUpdate({ url });
+}
+
+/**
  * 安卓返回键（微信等国民 APP 惯例）：底部 Tab 根页面 = 双击退出；
  * 子页（相册/拍照/课表编辑）= 逐级返回。Tab 切换不进历史栈（bottom-nav 用 replace）。
  */
@@ -77,6 +85,7 @@ interface GalleryStorePlugin {
   savePhoto(options: { path: string; fileName: string; album?: string }): Promise<{ filePath: string }>;
   deleteAlbumFiles(options: { album?: string }): Promise<{ deleted: number }>;
   openFolder(options: { album?: string }): Promise<{ via?: string }>;
+  downloadUpdate(options: { url: string }): Promise<{ started: boolean }>;
 }
 
 const GalleryStore = registerPlugin<GalleryStorePlugin>("GalleryStore");
