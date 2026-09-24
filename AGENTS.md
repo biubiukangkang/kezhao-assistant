@@ -35,4 +35,5 @@ If import fails and `.qmuse/last-import-error.json` exists, read its structured 
 - 读周次用 `match.ts` 的 `weeksOf` / `slotWeekLabel`（兼容旧 weekStart/End+单双周 数据），不要直接读 slot.weekStart。
 - 部署：`npm run build` → `qmuse import .`；平台"发布"动作在 QMuse 网页端。
 - 安卓 APP 线：`npm run app:debug / app:release`（需 `JAVA_HOME=C:\Java\jdk-21`）；**android 下 .java 源文件一律 ASCII-only**（中文用 `\uXXXX`，javac GBK 坑见踩坑日志）；原生平台分支一律经 `lib/native.ts` 的 `isNativeApp()`，不要在业务代码里直接 import Capacitor 插件；`android/keystore.properties` 与 `*.keystore` 不入库。
+- **高危回归红线（都真机翻过车，勿改回）**：相机 `saveToGallery` 必须 false（true=相册双图）；状态栏=沉浸式注入方案（技术方案 §8b），勿回退 env()/fitsSystemWindows/setOverlaysWebView；跨原生→WebView 的尺寸必须 ÷ devicePixelRatio；WebView 里跨域公网资源一律 CapacitorHttp 勿用 fetch；相册 picker 的 File 必须选图瞬间读取。
 - 主文档：docs/技术方案.md（架构与现状）、docs/PRD.md（需求与进度）、docs/踩坑日志.md。
