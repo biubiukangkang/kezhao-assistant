@@ -1,3 +1,10 @@
+/** 科目文字记录（无图的纯文字事项，如"周五交作业"；融入课程相册动态流） */
+export interface CourseNote {
+  id: string;
+  text: string;
+  at: number; // 记录时间（ms），决定落在动态流哪个日期组
+}
+
 /** 课程 */
 export interface Course {
   id: string;
@@ -5,6 +12,8 @@ export interface Course {
   color: string;
   teacher?: string;
   createdAt: number;
+  /** 文字记录（新→旧），备份/删课随 Course 整体走 */
+  notes?: CourseNote[];
 }
 
 /** 课时段：星期 + 时间范围（距当天 0 点的分钟数）+ 周次 */

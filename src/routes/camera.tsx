@@ -79,6 +79,9 @@ function NativeCameraPage() {
   const [shotCount, setShotCount] = useState(0);
   const [flash, setFlash] = useState<string | null>(null);
   const [importing, setImporting] = useState<string | null>(null);
+  // 确认卡上顺带写的提醒，归档时随照片一起入库
+  const [confirmNote, setConfirmNote] = useState("");
+  const [noteEditing, setNoteEditing] = useState(false);
   const flashTimer = useRef<number | undefined>(undefined);
   const [sessionBatchId] = useState(() => uid());
 
@@ -109,6 +112,8 @@ function NativeCameraPage() {
     if (!confirmState) return;
     URL.revokeObjectURL(confirmState.url);
     setConfirmState(null);
+    setConfirmNote("");
+    setNoteEditing(false);
   }
 
   async function shoot() {
@@ -145,14 +150,19 @@ function NativeCameraPage() {
   async function commit(courseId: string | null) {
     const c = confirmState;
     if (!c) return;
+    const note = confirmNote.trim() || undefined;
     const name = await archiveShot(c.blob, c.capturedAt, c.source, {
       courseId,
       batchId: sessionBatchId,
+      note,
     });
     setBatchCourse({ id: courseId, name });
     setShotCount((x) => x + 1);
+    setConfirmNote("");
+    setNoteEditing(false);
     discardConfirm();
     showFlash(name);
+    if (note) toast.success("提醒已存");
   }
 
   function openPicker(mode: "confirm" | "batch") {
@@ -226,6 +236,28 @@ function NativeCameraPage() {
               </>
             ) : (
               <p className="text-sm leading-6 text-amber-300">{confirmState.suggest.reason}</p>
+            )}
+          </div>
+          <div className="shrink-0 px-6 pt-3 text-center">
+            {noteEditing || confirmNote ? (
+              <textarea
+                autoFocus
+                value={confirmNote}
+                onChange={(e) => setConfirmNote(e.target.value)}
+                rows={2}
+                maxLength={200}
+                placeholder="写点提醒，比如：这份作业周五交…"
+                aria-label="写提醒"
+                className="w-full resize-none rounded-lg bg-white/10 px-2.5 py-1.5 text-left text-sm leading-6 text-white placeholder:text-white/40 focus:outline-none"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setNoteEditing(true)}
+                className="text-xs text-white/50 transition-colors active:text-white"
+              >
+                ＋ 写提醒…
+              </button>
             )}
           </div>
           <div className="shrink-0 space-y-2 px-6 pb-[max(1.5rem,var(--nav-bar-h),env(safe-area-inset-bottom))] pt-4">

@@ -255,7 +255,7 @@ export async function archiveShot(
   blob: Blob,
   capturedAt: number,
   source: CaptureSource,
-  opts: { courseId: string | null; batchId: string },
+  opts: { courseId: string | null; batchId: string; note?: string },
 ): Promise<string | null> {
   const courses = await listCourses();
   const name = opts.courseId ? (courses.find((c) => c.id === opts.courseId)?.name ?? null) : null;
@@ -271,6 +271,7 @@ export async function archiveShot(
     starred: false,
     blob: stored,
     ...(thumb ? { thumb } : {}),
+    ...(opts.note ? { note: opts.note } : {}),
     createdAt: Date.now(),
   };
   await savePhoto(photo);

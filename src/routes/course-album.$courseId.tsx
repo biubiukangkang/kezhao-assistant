@@ -14,17 +14,17 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { addPhotosToCourse, makeThumb, rematchPhotos, type BatchResult } from "@/lib/archive";
-import { deletePhoto, getSettings, listCourses, listPhotos, listSlots, savePhoto, savePhotos, softDeletePhoto } from "@/lib/db";
+import { deletePhoto, getSettings, listCourses, listPhotos, listSlots, saveCourse, savePhoto, savePhotos, softDeletePhoto, uid } from "@/lib/db";
 import { exportPhotos } from "@/lib/photo-export";
 import { matchPhoto, weekdayOf } from "@/lib/match";
 import { minToHHmm } from "@/lib/periods";
-import { WEEKDAY_NAMES, type Course, type Photo } from "@/lib/types";
+import { WEEKDAY_NAMES, type Course, type CourseNote, type Photo } from "@/lib/types";
 
 export const Route = createFileRoute("/course-album/$courseId")({
   component: AlbumPage,
 });
 
-type Group = { key: string; label: string; photos: Photo[] };
+type Group = { key: string; label: string; photos: Photo[]; notes: CourseNote[] };
 
 function toastBatch(r: BatchResult) {
   const parts = [
@@ -80,6 +80,81 @@ function NoteBlock({
   );
 }
 
+/** 文字记录卡：同照片卡的容器但无图，点击原地编辑，失焦自动保存，删光即删除该条 */
+function NoteCard({
+  note,
+  onSave,
+}: {
+  note: CourseNote;
+  onSave: (n: CourseNote, text: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const nd = new Date(note.at);
+  return (
+    <div className="rounded-2xl border bg-card p-3 shadow-sm">
+      <p className="mb-1 text-xs text-muted-foreground">
+        {minToHHmm(nd.getHours() * 60 + nd.getMinutes())}
+      </p>
+      {editing ? (
+        <textarea
+          autoFocus
+          defaultValue={note.text}
+          rows={3}
+          maxLength={500}
+          aria-label="编辑文字记录"
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== note.text) onSave(note, v);
+            setEditing(false);
+          }}
+          className="w-full resize-none rounded-lg bg-muted/40 px-2.5 py-1.5 text-[17px] leading-6 text-foreground focus:outline-none"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="block w-full whitespace-pre-wrap text-left text-[17px] leading-6 text-foreground"
+        >
+          {note.text}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** 新增文字记录的入口框：常驻流顶部，点击展开输入，失焦保存 */
+function NoteComposer({ onSave }: { onSave: (text: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="w-full rounded-2xl border border-dashed bg-card/50 p-3 text-left text-sm text-muted-foreground shadow-sm transition-colors active:bg-card"
+      >
+        ＋ 记录点事情（不用拍照）…
+      </button>
+    );
+  }
+  return (
+    <div className="rounded-2xl border bg-card p-3 shadow-sm">
+      <textarea
+        autoFocus
+        rows={3}
+        maxLength={500}
+        placeholder="重要事项直接写下来，比如：周五交作业…"
+        aria-label="新文字记录"
+        onBlur={(e) => {
+          const v = e.target.value.trim();
+          setEditing(false);
+          if (v) onSave(v);
+        }}
+        className="w-full resize-none rounded-lg bg-muted/40 px-2.5 py-1.5 text-[17px] leading-6 text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+      />
+    </div>
+  );
+}
+
 /** 课程相册：QQ 空间式动态流——上面文字（时间+备注）下面图片；courseId="pending" 为待分类 */
 function AlbumPage() {
   const { courseId } = Route.useParams();
@@ -104,24 +179,32 @@ function AlbumPage() {
   const load = () => {
     void Promise.all([listCourses(), listPhotos()]).then(([cs, ps]) => {
       setAllCourses(cs);
-      setCourse(cs.find((c) => c.id === courseId) ?? null);
+      const current = cs.find((c) => c.id === courseId) ?? null;
+      setCourse(current);
       const byKey = new Map<string, Group>();
       const list: Group[] = [];
-      for (const p of ps) {
-        if (isPending ? p.courseId !== null : p.courseId !== courseId) continue;
-        const d = new Date(p.capturedAt);
+      const groupOf = (t: number): Group => {
+        const d = new Date(t);
         const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
         let g = byKey.get(key);
         if (!g) {
           g = {
             key,
-            label: `${d.getMonth() + 1}月${d.getDate()}日 ${WEEKDAY_NAMES[weekdayOf(p.capturedAt) - 1]}`,
+            label: `${d.getMonth() + 1}月${d.getDate()}日 ${WEEKDAY_NAMES[weekdayOf(t) - 1]}`,
             photos: [],
+            notes: [],
           };
           byKey.set(key, g);
           list.push(g);
         }
-        g.photos.push(p);
+        return g;
+      };
+      for (const p of ps) {
+        if (isPending ? p.courseId !== null : p.courseId !== courseId) continue;
+        groupOf(p.capturedAt).photos.push(p);
+      }
+      if (!isPending && current?.notes) {
+        for (const n of current.notes) groupOf(n.at).notes.push(n);
       }
       setGroups(list);
       setVisibleGroups(3);
@@ -216,6 +299,25 @@ function AlbumPage() {
       patchLocal(next);
       if (note) toast.success("提醒已保存");
     });
+  }
+
+  async function handleAddNote(text: string) {
+    if (!course) return;
+    const note: CourseNote = { id: uid(), text, at: Date.now() };
+    await saveCourse({ ...course, notes: [note, ...(course.notes ?? [])] });
+    load();
+    toast.success("已记录");
+  }
+
+  async function handleUpdateNoteEntry(n: CourseNote, text: string) {
+    if (!course) return;
+    const old = course.notes ?? [];
+    const notes = text
+      ? old.map((x) => (x.id === n.id ? { ...x, text } : x))
+      : old.filter((x) => x.id !== n.id);
+    await saveCourse({ ...course, notes });
+    load();
+    if (text) toast.success("已更新");
   }
 
   function handleMoveTo(p: Photo, targetId: string | null) {
@@ -420,7 +522,13 @@ function AlbumPage() {
         </p>
       )}
 
-      {total === 0 ? (
+      {!isPending && !selectMode && (
+        <div className="mb-6 px-4">
+          <NoteComposer onSave={(t) => void handleAddNote(t)} />
+        </div>
+      )}
+
+      {total === 0 && groups.length === 0 ? (
         <div className="flex flex-col items-center gap-2 pt-16 text-center">
           <EmptySketch className="w-36" />
           <p className="text-sm text-muted-foreground">
@@ -483,6 +591,9 @@ function AlbumPage() {
             <section key={g.key}>
               <h2 className="mb-2 text-xs font-medium text-muted-foreground">{g.label}</h2>
               <div className="space-y-3">
+                {g.notes.map((n) => (
+                  <NoteCard key={n.id} note={n} onSave={(nn, t) => void handleUpdateNoteEntry(nn, t)} />
+                ))}
                 {g.photos.map((p) => {
                   const pd = new Date(p.capturedAt);
                   return (

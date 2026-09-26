@@ -148,6 +148,16 @@ function SettingsPage() {
   const nativeApp = isNativeApp();
   const folderOk = folderSupported();
 
+  /** 外链：原生走系统浏览器（App 内 WebView 无地址栏，体验差），网页端开新标签 */
+  async function openExternal(url: string) {
+    if (nativeApp) {
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.open({ url });
+    } else {
+      window.open(url, "_blank", "noopener");
+    }
+  }
+
   async function loadStorage() {
     const [photos, trashed] = await Promise.all([listPhotos(), listDeletedPhotos()]);
     let usageMB = "";
@@ -647,7 +657,7 @@ function SettingsPage() {
               <div className="flex items-center justify-between">
                 <p className="text-xs">
                   <span className="font-medium text-green-600 dark:text-green-400">
-                    {nativeApp ? "自动存入系统相册" : `自动存到「${folder.name}」`}
+                    {nativeApp ? "自动存入相册「课照助手」" : `自动存到「${folder.name}」`}
                   </span>
                 </p>
                 <div className="flex gap-1.5">
@@ -673,6 +683,9 @@ function SettingsPage() {
                   </Button>
                 </div>
               </div>
+              {nativeApp && (
+                <p className="text-xs text-muted-foreground">照片按科目分文件夹存放，点「查看」直达</p>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-between">
@@ -745,18 +758,30 @@ function SettingsPage() {
         </div>
       </FoldCard>
 
-      <div className="flex items-center justify-between pb-2">
-        <p className="text-xs text-muted-foreground">课照助手 · v{appVersion ?? "1.4"}</p>
-        {nativeApp && (
+      <div className="space-y-1.5 pb-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">课照助手 · v{appVersion ?? "1.4"}</p>
+          {nativeApp && (
+            <button
+              type="button"
+              onClick={() => void handleCheckUpdate()}
+              disabled={checking}
+              className="text-xs text-muted-foreground underline-offset-2 disabled:opacity-50 hover:underline active:opacity-70"
+            >
+              {checking ? "检查中…" : "检查更新"}
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          开源：
           <button
             type="button"
-            onClick={() => void handleCheckUpdate()}
-            disabled={checking}
-            className="text-xs text-muted-foreground underline-offset-2 disabled:opacity-50 hover:underline active:opacity-70"
+            onClick={() => void openExternal("https://github.com/biubiukangkang/kezhao-assistant")}
+            className="underline-offset-2 hover:underline active:opacity-70"
           >
-            {checking ? "检查中…" : "检查更新"}
+            github.com/biubiukangkang/kezhao-assistant
           </button>
-        )}
+        </p>
       </div>
       <input
         ref={xlsRef}
