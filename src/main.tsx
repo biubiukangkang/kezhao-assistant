@@ -26,14 +26,7 @@ if (isNativeApp()) void injectStatusBarHeight();
 // 安卓返回键微信模式：Tab 根双击退出，子页逐级返回
 if (isNativeApp()) setupAndroidBackButton(router);
 
-function reportFatalReactError(
-  error: unknown,
-  errorInfo: { componentStack?: string },
-) {
-  window.__MUSE_PREVIEW_ERROR_CAPTURE__?.reportError(error, {
-    kind: "react-error-boundary",
-    severity: "fatal",
-  });
+function reportFatalReactError(error: unknown, errorInfo: { componentStack?: string }) {
   console.error(error, errorInfo.componentStack);
 }
 

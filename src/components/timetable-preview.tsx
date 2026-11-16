@@ -48,6 +48,7 @@ export function TimetablePreview({
             <span className="text-muted-foreground">
               {WEEKDAY_NAMES[r.weekday - 1]} {periodLabel(r.p0)} 节
             </span>
+            {r.room && <span className="text-muted-foreground">{r.room}</span>}
             <span className="ml-auto text-muted-foreground">{weeksLabel(r.weeks)}</span>
           </div>
         ))}

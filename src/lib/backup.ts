@@ -9,18 +9,20 @@ import {
 } from "./db";
 import type { AppSettings, Course, Photo, ScheduleSlot } from "./types";
 
-const BACKUP_VERSION = 1;
+const BACKUP_FORMAT = "kz-backup";
+const BACKUP_VERSION = 2;
 
 // thumb 不进备份（体积翻倍无意义），恢复后由相册页回填重新生成
-type BackupPhoto = Omit<Photo, "blob" | "thumb"> & { blobBase64: string | null };
+export type BackupPhotoV2 = Omit<Photo, "blob" | "thumb"> & { blobBase64: string | null };
 
-type BackupFile = {
-  version: number;
+export type BackupFileV2 = {
+  format: "kz-backup";
+  version: 2;
   exportedAt: number;
   settings: AppSettings;
   courses: Course[];
   slots: ScheduleSlot[];
-  photos: BackupPhoto[];
+  photos: BackupPhotoV2[];
 };
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -46,6 +48,30 @@ async function base64ToBlob(dataUrl: string): Promise<Blob> {
   return res.blob();
 }
 
+/** 备份头部文本块（kzb1 v2，§4.2/§9.5）：settings/courses/slots 一块，photos 数组由调用方续接 */
+export function backupHeadChunk(
+  settings: AppSettings,
+  courses: Course[],
+  slots: ScheduleSlot[],
+  exportedAt: number,
+): string {
+  return `${JSON.stringify({
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    exportedAt,
+    settings,
+    courses,
+    slots,
+  }).slice(0, -1)},"photos":[`;
+}
+
+/** 单张照片的文本块；index 仅决定是否加前导逗号（首张前无逗号） */
+export function backupPhotoChunk(photo: Photo, index: number, blobBase64: string | null): string {
+  const { blob: _blob, thumb: _thumb, ...meta } = photo;
+  const b64 = blobBase64 ? `"${blobBase64}"` : "null";
+  return `${index > 0 ? "," : ""}${JSON.stringify(meta).slice(0, -1)},"blobBase64":${b64}}`;
+}
+
 /**
  * 流式产出备份 JSON 文本块：头部的课表/课程元信息一块，之后每张照片一块。
  * 消费方逐块处理（网页端收集进 Blob、原生端逐块追加写缓存文件），
@@ -58,22 +84,11 @@ export async function* backupChunks(): AsyncGenerator<string> {
     listSlots(),
     listAllPhotos(),
   ]);
-  const head: Omit<BackupFile, "photos"> = {
-    version: BACKUP_VERSION,
-    exportedAt: Date.now(),
-    settings,
-    courses,
-    slots,
-  };
-  yield `${JSON.stringify(head).slice(0, -1)},"photos":[`;
+  yield backupHeadChunk(settings, courses, slots, Date.now());
   for (let i = 0; i < photos.length; i++) {
-    const { blob, thumb: _thumb, ...meta } = photos[i];
-    const photoJson = JSON.stringify(meta);
+    const { blob } = photos[i];
     const b64 = blob ? await blobToBase64(blob) : null;
-    const chunk = b64
-      ? `${i > 0 ? "," : ""}${photoJson.slice(0, -1)},"blobBase64":"${b64}"}`
-      : `${i > 0 ? "," : ""}${photoJson.slice(0, -1)},"blobBase64":null}`;
-    yield chunk;
+    yield backupPhotoChunk(photos[i], i, b64);
   }
   yield "]}";
 }
@@ -89,6 +104,56 @@ export async function exportBackup(): Promise<{ blob: Blob; filename: string }> 
   const parts: string[] = [];
   for await (const chunk of backupChunks()) parts.push(chunk);
   return { blob: new Blob(parts, { type: "application/json" }), filename: backupFilename() };
+}
+
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/**
+ * blobBase64 三形态（§4.2）：null（无图）/ 纯 base64 / 完整 dataURL。
+ * 空串按无图兼容（旧数据或手改文件可能出现）。
+ */
+function isValidBlobBase64(v: unknown): boolean {
+  if (v === null || v === "") return true;
+  if (typeof v !== "string") return false;
+  if (v.includes(",")) {
+    // 完整 dataURL 形态，前缀必须是 data:
+    if (!v.startsWith("data:")) return false;
+    return BASE64_RE.test(v.slice(v.indexOf(",") + 1));
+  }
+  return BASE64_RE.test(v);
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * 解析并校验备份文本（纯函数：不碰 Capacitor/IndexedDB，node 环境可单测）。
+ * 只认 kzb1 v2：format !== "kz-backup" 或 version !== 2 → 抛「版本过旧，无法恢复」（v1 不迁移）。
+ * 所有校验失败都在此抛出——调用方（inspectBackup/importBackup）保证写库前先过这一关。
+ */
+export function parseBackupText(text: string): BackupFileV2 {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error("文件读不出来，确认选的是本应用导出的备份文件");
+  }
+  if (!isRecord(raw)) throw new Error("不是有效的课照助手备份文件");
+  if (raw.format !== BACKUP_FORMAT || raw.version !== BACKUP_VERSION) {
+    throw new Error("版本过旧，无法恢复");
+  }
+  if (!isRecord(raw.settings)) throw new Error("备份文件缺少设置信息");
+  if (!Array.isArray(raw.courses)) throw new Error("备份文件缺少课程数据");
+  if (!Array.isArray(raw.slots)) throw new Error("备份文件缺少课表时段数据");
+  if (!Array.isArray(raw.photos)) throw new Error("备份文件缺少照片数据");
+  for (const p of raw.photos) {
+    if (!isRecord(p) || typeof p.id !== "string" || !p.id || typeof p.capturedAt !== "number") {
+      throw new Error("备份里有照片记录不完整");
+    }
+    if (!isValidBlobBase64(p.blobBase64)) throw new Error("备份里有照片数据损坏");
+  }
+  return raw as BackupFileV2;
 }
 
 export type BackupPreview = {
@@ -113,21 +178,18 @@ export async function inspectBackup(file: File): Promise<BackupPreview> {
     starred: 0,
     sizeMB: (file.size / 1024 / 1024).toFixed(1),
   };
-  let data: BackupFile;
+  let data: BackupFileV2;
   try {
-    data = JSON.parse(await file.text()) as BackupFile;
-  } catch {
-    return { ...base, error: "文件读不出来，确认选的是本应用导出的备份文件" };
-  }
-  if (data.version !== BACKUP_VERSION || !Array.isArray(data.photos)) {
-    return { ...base, error: "不是有效的课照助手备份文件" };
+    data = parseBackupText(await file.text());
+  } catch (e) {
+    return { ...base, error: e instanceof Error ? e.message : "不是有效的课照助手备份文件" };
   }
   return {
     ...base,
     valid: true,
     exportedAt: data.exportedAt ?? 0,
-    courses: data.courses?.length ?? 0,
-    slots: data.slots?.length ?? 0,
+    courses: data.courses.length,
+    slots: data.slots.length,
     photos: data.photos.length,
     starred: data.photos.filter((p) => p.starred).length,
   };
@@ -142,24 +204,23 @@ export async function inspectBackup(file: File): Promise<BackupPreview> {
 export async function importBackup(
   file: File,
 ): Promise<{ courses: number; slots: number; photos: number }> {
-  const data = JSON.parse(await file.text()) as BackupFile;
-  if (data.version !== BACKUP_VERSION || !Array.isArray(data.photos)) {
-    throw new Error("不是有效的课照助手备份文件");
+  let text: string;
+  try {
+    text = await file.text();
+  } catch {
+    throw new Error("文件读不出来，确认选的是本应用导出的备份文件");
   }
+  // 先全量解析校验，失败在此抛出，不写库
+  const data = parseBackupText(text);
   const photos: Photo[] = [];
   for (const { blobBase64, ...meta } of data.photos) {
     photos.push({ ...meta, blob: blobBase64 ? await base64ToBlob(blobBase64) : undefined });
   }
-  await replaceAllData(
-    data.settings ?? (await getSettings()),
-    data.courses ?? [],
-    data.slots ?? [],
-    photos,
-  );
+  await replaceAllData(data.settings, data.courses, data.slots, photos);
   return {
-    courses: data.courses?.length ?? 0,
-    slots: data.slots?.length ?? 0,
-    photos: data.photos?.length ?? 0,
+    courses: data.courses.length,
+    slots: data.slots.length,
+    photos: data.photos.length,
   };
 }
 

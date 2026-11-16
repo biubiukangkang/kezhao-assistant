@@ -48,12 +48,23 @@ export function uid(): string {
 export const DEFAULT_SETTINGS: AppSettings = {
   semesterStart: "", // 未设置则匹配全部降级为待分类
   periods: DEFAULT_PERIODS,
+  defaultWeeks: 16,
 };
+
+/** 旧数据兼容合并（加字段不升版本）：缺 defaultWeeks 补默认、空 periods 回落默认作息 */
+export function mergeSettings(saved: AppSettings | undefined): AppSettings {
+  if (!saved) return DEFAULT_SETTINGS;
+  return {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    periods: saved.periods?.length ? saved.periods : DEFAULT_PERIODS,
+  };
+}
 
 export async function getSettings(): Promise<AppSettings> {
   const db = await getDB();
   const saved = (await db.get("meta", SETTINGS_KEY)) as AppSettings | undefined;
-  return saved ?? DEFAULT_SETTINGS;
+  return mergeSettings(saved);
 }
 
 export async function saveSettings(s: AppSettings): Promise<void> {

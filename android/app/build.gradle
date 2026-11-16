@@ -1,6 +1,7 @@
 apply plugin: 'com.android.application'
 
-// 源码含中文注释/字符串，Windows 下 javac 默认 GBK 解码会吞行导致符号解析错乱
+// Source contains non-ASCII escapes; on Chinese Windows javac defaults to GBK
+// decoding and mangles lines. Force UTF-8 (hard-won from the legacy project).
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
@@ -12,8 +13,8 @@ android {
         applicationId "cn.kezhao.assistant"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 14
-        versionName "1.4.9"
+        versionCode 1001
+        versionName "2.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -21,9 +22,10 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    // 自签 release：keystore.properties 与 *.keystore 均已 gitignore，丢失则无法覆盖升级（只能卸载重装）
-    def keystoreProps = new Properties()
+    // Self-signed release: keystore.properties is gitignored; when it is absent
+    // the release signing config simply stays empty (build must not fail).
     def keystorePropsFile = rootProject.file("keystore.properties")
+    def keystoreProps = new Properties()
     if (keystorePropsFile.exists()) {
         keystoreProps.load(new FileInputStream(keystorePropsFile))
     }

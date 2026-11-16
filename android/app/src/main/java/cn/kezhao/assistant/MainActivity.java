@@ -20,7 +20,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // 本地插件需在 super.onCreate 前注册
+        // Local plugins must be registered before super.onCreate
         registerPlugin(GalleryStorePlugin.class);
         super.onCreate(savedInstanceState);
         // WebView text zoom follows the system font scale by default; large-font

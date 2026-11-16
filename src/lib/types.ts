@@ -28,6 +28,8 @@ export interface ScheduleSlot {
   oddEven: "all" | "odd" | "even"; // 旧字段，新数据保存时按 weeks 推导
   /** 任意周次组合（如 1-3,5-7 → [1,2,3,5,6,7]）；存在时优先于上面的范围表达 */
   weeks?: number[];
+  /** 教室（如"教三-301"）；可选，旧数据无此字段 */
+  room?: string;
 }
 
 export type CaptureSource = "camera" | "exif" | "mtime" | "manual";
@@ -67,6 +69,9 @@ export interface Period {
 export interface AppSettings {
   semesterStart: string; // 学期第 1 周周一的 ISO 日期 YYYY-MM-DD
   periods: Period[];
+  defaultWeeks: number; // 导入课表缺周次时的默认周数（默认 16）
+  privacyAgreedAt?: number; // 隐私政策同意时间（ms）；未同意过为 undefined
+  seenWhatsNew?: string; // 已读过的更新说明版本号（如 "2.0.0"）
 }
 
 export const COURSE_COLORS = [

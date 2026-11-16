@@ -1,6 +1,8 @@
 import { uid } from "./db";
 import { deleteCourse, deleteSlot, listCourses, listSlots, saveCourse, saveSlot } from "./db";
-import { COURSE_COLORS, type Period, type ScheduleSlot } from "./types";
+import { weeksLabel } from "./match";
+import { COURSE_COLORS, type Period, type ScheduleSlot, WEEKDAY_NAMES } from "./types";
+import type { KzsParseResult, KzsRow } from "./timetable-format";
 
 export type ParsedRow = {
   name: string;
@@ -10,6 +12,7 @@ export type ParsedRow = {
   p1: number;
   weeks: number[];
   raw: string;
+  room?: string; // 教室 → ScheduleSlot.room（KZS1 第 6 列）
 };
 
 export type ParseResult = {
@@ -107,6 +110,21 @@ function guessName(rest: string): string {
   return parts.reduce((a, b) => (b.length > a.length ? b : a));
 }
 
+/** 从含强分隔符（| ｜ Tab 或 ≥2 空格）的列式行里取第 6 列（教室），与 KZS1 格式对齐；非列式行/不足 6 列返回 undefined */
+function extractRoomColumn(line: string): string | undefined {
+  if (!/[|｜\t]/.test(line) && !/\s{2,}/.test(line)) return undefined;
+  const cells: string[] = [];
+  const body = line.trim().replace(/^[|｜]\s*/, "").replace(/\s*[|｜]$/, "");
+  for (const seg of body.split(/[|｜\t]/)) {
+    const t = seg.trim();
+    if (/\s{2,}/.test(t)) cells.push(...t.split(/\s{2,}/).map((c) => c.trim()));
+    else cells.push(t);
+  }
+  if (cells.length <= 5) return undefined; // 教室是第 6 列（index 5）
+  const room = (cells.length > 6 ? cells.slice(5).join(" ") : cells[5]).trim();
+  return room || undefined;
+}
+
 /** 解析整段课表文本（每行一节课）；periods 为用户设置的节次表（决定大节数量与时间）；解析失败的行进 failed */
 export function parseTimetableText(text: string, periods: Period[]): ParseResult {
   const ok: ParsedRow[] = [];
@@ -133,6 +151,7 @@ export function parseTimetableText(text: string, periods: Period[]): ParseResult
     }
     const p0 = Math.max(0, Math.min(periodsParsed.p0, periods.length - 1));
     const p1 = Math.max(p0, Math.min(periodsParsed.p1, periods.length - 1));
+    const room = extractRoomColumn(raw);
     ok.push({
       name,
       weekday: wd.weekday,
@@ -140,6 +159,7 @@ export function parseTimetableText(text: string, periods: Period[]): ParseResult
       p1,
       weeks: weeks ?? Array.from({ length: 16 }, (_, i) => i + 1),
       raw,
+      ...(room ? { room } : {}),
     });
   }
   return { ok, failed };
@@ -182,9 +202,45 @@ export async function applyTimetable(rows: ParsedRow[], periods: Period[]): Prom
       weekStart: r.weeks[0] ?? 1,
       weekEnd: r.weeks[r.weeks.length - 1] ?? 16,
       oddEven: "all",
+      ...(r.room ? { room: r.room } : {}),
     };
     await saveSlot(slot);
     i += 1;
   }
   return i;
+}
+
+// ---------- KZS1（AI 转课表）结果桥接 ----------
+
+/** KzsRow → 规范 KZS1 行文本（ParsedRow.raw 用；预览列表不展示，仅供排查） */
+function kzsRowRaw(r: KzsRow): string {
+  const wd = WEEKDAY_NAMES[r.weekday - 1] ?? `周${r.weekday}`;
+  const weeks = r.weeks.length > 0 ? `${r.weeks[0]}-${r.weeks[r.weeks.length - 1]}周` : "";
+  return `${r.name} | ${wd} | ${r.p0 * 2 + 1}-${r.p1 * 2 + 2}节 | ${weeks}`;
+}
+
+/**
+ * KZS1 解析结果 → 导入预览/落库共用的 ParseResult：
+ * warn 行（节次越界截断、缺周次补默认等）照样导入，与 ok 合并；
+ * failed 行转成「第N行：原文」字符串，供 TimetablePreview 展示与剔除。
+ */
+export function kzsToParseResult(res: KzsParseResult): ParseResult {
+  const rows: ParsedRow[] = [...res.ok, ...res.warn].map((r) => ({
+    name: r.name,
+    ...(r.teacher ? { teacher: r.teacher } : {}),
+    ...(r.room ? { room: r.room } : {}),
+    weekday: r.weekday,
+    p0: r.p0,
+    p1: r.p1,
+    weeks: r.weeks,
+    raw: kzsRowRaw(r),
+  }));
+  return { ok: rows, failed: res.failed.map((f) => `第${f.lineNo}行：${f.raw}`) };
+}
+
+/** 把一行解析结果导出为 KZS1 token：`课程名 | 星期 | 节次 | 周次 | 教师 | 教室`；教室为第 6 列，可回贴 parseKzs 解析 */
+export function parsedRowToToken(row: ParsedRow): string {
+  const wd = WEEKDAY_NAMES[row.weekday - 1] ?? `周${row.weekday}`;
+  const period = `${row.p0 * 2 + 1}-${row.p1 * 2 + 2}节`;
+  return [row.name, wd, period, weeksLabel(row.weeks), row.teacher ?? "", row.room ?? ""].join(" | ");
 }

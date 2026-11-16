@@ -212,7 +212,7 @@ function SchedulePage() {
                       className="flex min-h-0 flex-1 flex-col items-start justify-center overflow-hidden rounded-md px-1.5 py-1 text-left active:brightness-95"
                     >
                       <span className={`w-full truncate font-medium leading-4 ${crowded ? "text-[10px]" : "text-[11px]"}`}>
-                        {c.name}
+                        {c.name}{slot.room ? ` · ${slot.room}` : ""}
                       </span>
                       {!crowded && sp > 1 && (
                         <span className="text-[10px] leading-3 text-muted-foreground">
@@ -284,6 +284,7 @@ function SlotEditorDialog({
   const [weeks, setWeeks] = useState<number[]>(
     editing ? weeksOf(editing) : Array.from({ length: 16 }, (_, i) => i + 1),
   );
+  const [room, setRoom] = useState(editing?.room ?? "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -353,6 +354,7 @@ function SlotEditorDialog({
         weekStart: ws[0],
         weekEnd: ws[ws.length - 1],
         oddEven: step2 && ws[0] % 2 === 1 ? "odd" : step2 && ws[0] % 2 === 0 ? "even" : "all",
+        ...(room.trim() ? { room: room.trim() } : {}),
       });
       onSaved();
       onClose();
@@ -477,6 +479,16 @@ function SlotEditorDialog({
             {minToHHmm(periods[startIdx].startMin)} – {minToHHmm(periods[endIdx].endMin)}
             （时间在「设置」里可按学校作息调整）
           </p>
+
+          <div className="space-y-1.5">
+            <Label>教室</Label>
+            <Input
+              value={room}
+              onChange={(e) => setRoom(e.target.value)}
+              placeholder="如：教三-301（可留空）"
+              className="min-h-11"
+            />
+          </div>
 
           <div className="space-y-2">
             <Label>周次</Label>

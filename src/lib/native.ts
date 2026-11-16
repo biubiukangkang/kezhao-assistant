@@ -45,14 +45,6 @@ export async function injectStatusBarHeight(): Promise<void> {
 }
 
 /**
- * 应用内更新下载：系统 DownloadManager 下载（通知栏看进度），
- * 完成后自动弹系统安装器，覆盖安装即可。
- */
-export async function downloadAndInstallApk(url: string): Promise<void> {
-  await GalleryStore.downloadUpdate({ url });
-}
-
-/**
  * 安卓返回键（微信等国民 APP 惯例）：底部 Tab 根页面 = 双击退出；
  * 子页（相册/拍照/课表编辑）= 逐级返回。Tab 切换不进历史栈（bottom-nav 用 replace）。
  */
@@ -101,7 +93,6 @@ interface GalleryStorePlugin {
   savePhoto(options: { path: string; fileName: string; album?: string }): Promise<{ filePath: string }>;
   deleteAlbumFiles(options: { album?: string }): Promise<{ deleted: number }>;
   openFolder(options: { album?: string }): Promise<{ via?: string }>;
-  downloadUpdate(options: { url: string }): Promise<{ started: boolean }>;
   getStatusBarHeight(): Promise<{ height: number; navHeight: number }>;
 }
 
@@ -232,14 +223,25 @@ export async function shareBackupFile(
   chunks: () => AsyncIterable<string>,
   filename: string,
 ): Promise<void> {
-  const { Filesystem, Directory } = await import("@capacitor/filesystem");
+  // 必须显式 encoding：Filesystem 不传 encoding 时把字符串当 base64 二进制解码写盘（真机验证过，出来是乱码字节）
+  const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
   let first = true;
   for await (const chunk of chunks()) {
     if (first) {
-      await Filesystem.writeFile({ path: filename, data: chunk, directory: Directory.Cache });
+      await Filesystem.writeFile({
+        path: filename,
+        data: chunk,
+        directory: Directory.Cache,
+        encoding: Encoding.UTF8,
+      });
       first = false;
     } else {
-      await Filesystem.appendFile({ path: filename, data: chunk, directory: Directory.Cache });
+      await Filesystem.appendFile({
+        path: filename,
+        data: chunk,
+        directory: Directory.Cache,
+        encoding: Encoding.UTF8,
+      });
     }
   }
   const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Cache });

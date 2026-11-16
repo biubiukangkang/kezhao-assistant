@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CameraRouteImport } from './routes/camera'
 import { Route as CoursesRouteImport } from './routes/courses'
+import { Route as ImportAiRouteImport } from './routes/import-ai'
 import { Route as ScheduleRouteImport } from './routes/schedule'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as CourseAlbumCourseIdRouteImport } from './routes/course-album.$courseId'
@@ -29,6 +30,11 @@ const CameraRoute = CameraRouteImport.update({
 const CoursesRoute = CoursesRouteImport.update({
   id: '/courses',
   path: '/courses',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportAiRoute = ImportAiRouteImport.update({
+  id: '/import-ai',
+  path: '/import-ai',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ScheduleRoute = ScheduleRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/camera': typeof CameraRoute
   '/courses': typeof CoursesRoute
+  '/import-ai': typeof ImportAiRoute
   '/schedule': typeof ScheduleRoute
   '/settings': typeof SettingsRoute
   '/course-album/$courseId': typeof CourseAlbumCourseIdRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/camera': typeof CameraRoute
   '/courses': typeof CoursesRoute
+  '/import-ai': typeof ImportAiRoute
   '/schedule': typeof ScheduleRoute
   '/settings': typeof SettingsRoute
   '/course-album/$courseId': typeof CourseAlbumCourseIdRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/camera': typeof CameraRoute
   '/courses': typeof CoursesRoute
+  '/import-ai': typeof ImportAiRoute
   '/schedule': typeof ScheduleRoute
   '/settings': typeof SettingsRoute
   '/course-album/$courseId': typeof CourseAlbumCourseIdRoute
@@ -78,6 +87,7 @@ export interface FileRouteTypes {
     | '/'
     | '/camera'
     | '/courses'
+    | '/import-ai'
     | '/schedule'
     | '/settings'
     | '/course-album/$courseId'
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/camera'
     | '/courses'
+    | '/import-ai'
     | '/schedule'
     | '/settings'
     | '/course-album/$courseId'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/camera'
     | '/courses'
+    | '/import-ai'
     | '/schedule'
     | '/settings'
     | '/course-album/$courseId'
@@ -103,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CameraRoute: typeof CameraRoute
   CoursesRoute: typeof CoursesRoute
+  ImportAiRoute: typeof ImportAiRoute
   ScheduleRoute: typeof ScheduleRoute
   SettingsRoute: typeof SettingsRoute
   CourseAlbumCourseIdRoute: typeof CourseAlbumCourseIdRoute
@@ -129,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/courses'
       fullPath: '/courses'
       preLoaderRoute: typeof CoursesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/import-ai': {
+      id: '/import-ai'
+      path: '/import-ai'
+      fullPath: '/import-ai'
+      preLoaderRoute: typeof ImportAiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/schedule': {
@@ -159,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CameraRoute: CameraRoute,
   CoursesRoute: CoursesRoute,
+  ImportAiRoute: ImportAiRoute,
   ScheduleRoute: ScheduleRoute,
   SettingsRoute: SettingsRoute,
   CourseAlbumCourseIdRoute: CourseAlbumCourseIdRoute,

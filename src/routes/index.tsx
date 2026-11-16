@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { EmptySketch } from "@/components/empty-sketch";
 import { PageShell } from "@/components/page-shell";
-import { UpdateDialog } from "@/components/update-dialog";
 import { archiveFiles, type BatchResult } from "@/lib/archive";
 import { checkBackupReminder } from "@/lib/backup";
 import { getSettings, listCourses, listPhotos, listSlots, purgeExpiredPhotos } from "@/lib/db";
@@ -15,7 +14,6 @@ import {
   weekdayOf,
 } from "@/lib/match";
 import { locateSlotPeriods, minToHHmm, periodLabel } from "@/lib/periods";
-import { checkUpdate, type UpdateInfo } from "@/lib/updater";
 import {
   WEEKDAY_NAMES,
   type AppSettings,
@@ -50,7 +48,6 @@ function HomePage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
-  const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
@@ -73,10 +70,6 @@ function HomePage() {
           description: "照片只存在本机，建议到「设置 → 导出备份」存一份",
         });
       }
-    });
-    // 启动静默检查更新（原生 APP；失败静默）
-    void checkUpdate().then((u) => {
-      if (u) setUpdate(u);
     });
     // App 从后台恢复时重算"今天/第几周"——挂后台过夜后回来不能还显示昨天的课
     const onVisible = () => {
@@ -305,7 +298,6 @@ function HomePage() {
 
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
       </div>
-      <UpdateDialog update={update} onClose={() => setUpdate(null)} />
     </PageShell>
   );
 }
