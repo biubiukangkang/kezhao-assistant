@@ -2,11 +2,19 @@
 
 > 拍完板书不用管：打开即已按课程、按日期归档好的课堂照片助手
 
-<!-- TODO: 放一张主界面截图/GIF -->
+<p align="center">
+  <img src="docs/screenshots/01-home.jpg" width="255" alt="首页">
+  <img src="docs/screenshots/02-courses.jpg" width="255" alt="课程库">
+  <img src="docs/screenshots/03-album.jpg" width="255" alt="课程相册">
+</p>
 
 大学生拍板书/PPT，一学期几百张混在相册里，考前找不到。课照助手把「照片拍摄时间」和「课表」对齐——拍完自动归入对应课程，复习时来课程库找，整整齐齐。安卓 APP（Capacitor），本地优先，照片不上传。
 
-另有参赛网页版（QMuse 平台构建）：https://qmuse.cn/app/2147940046996490
+| 平台 | 下载 | 许可 | 体积 |
+|---|---|---|---|
+| Android 8.0+ | [Releases 下载 APK](https://github.com/biubiukangkang/kezhao-assistant/releases) | MIT | 约 4 MB |
+
+另有参赛网页版（QMuse 平台构建）：<https://qmuse.cn/app/2147940046996490>
 
 ## ✨ 功能特性
 
@@ -16,6 +24,10 @@
 - **数据主权**：IndexedDB 本地优先；系统相册按课程子文件夹自动镜像（免权限）；流式 JSON 整包备份/原子恢复；回收站 30 天可恢复；照片批量导出/分享
 - **应用内更新**：GitHub Release 检查更新，覆盖安装数据全保留
 - 适配深色模式、刘海安全区；锁定字体缩放，系统大字体不破版
+
+<p align="center">
+  <img src="docs/screenshots/04-settings.jpg" width="255" alt="设置">
+</p>
 
 ## 🛠 技术栈
 
@@ -57,3 +69,5 @@ npm run app:release  # 自签 release APK + version.json（android/app/build/out
 ## 📄 许可证
 
 MIT
+
+> 截图中的课程、课表与板书均为演示数据。
